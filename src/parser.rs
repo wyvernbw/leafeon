@@ -1,8 +1,9 @@
 use std::fs;
 
+use nalgebra::SVector;
 use nom::{
     bytes::complete::take,
-    combinator::{map, map_res, success, verify},
+    combinator::{map, verify},
     multi::{count, many0},
     number::complete::be_u32,
     sequence::tuple,
@@ -14,6 +15,13 @@ const DATA_PATH: &str = "./data/train-images-idx3-ubyte";
 #[derive(Debug, Clone)]
 
 pub struct Image(Vec<u8>);
+
+impl From<Image> for SVector<f32, { 28 * 28 }> {
+    fn from(Image(data): Image) -> Self {
+        let iterator = data.into_iter().map(|x| x as f32 / 255.0);
+        SVector::from_iterator(iterator)
+    }
+}
 
 pub type Label = u8;
 

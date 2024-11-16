@@ -5,7 +5,8 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.93"
-nalgebra = "0.33.2"
+nalgebra = { version = "0.33.2", features = ["rand"] }
 nom = "*"
+rand = "0.8.5"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
