@@ -1,12 +1,13 @@
+#![feature(generic_arg_infer)]
 #![feature(iter_array_chunks)]
 #![feature(iter_map_windows)]
 #![feature(inherent_associated_types)]
 #![feature(random)]
 #![feature(generic_const_exprs)]
 
-use std::{random::random, thread, time::Duration};
+use std::random::random;
 
-use model::OneNeuronExample;
+use model::{DModel, LayerSpec, OneNeuronExample};
 use parser::load_data;
 use tracing::Level;
 
@@ -15,7 +16,8 @@ pub mod parser;
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::fmt()
-        .pretty()
+        .compact()
+        .without_time()
         .with_max_level(Level::DEBUG)
         .init();
     let dataset = load_data()?;
@@ -26,11 +28,12 @@ fn main() -> anyhow::Result<()> {
     dataset.print_image(test_idx);
     tracing::info!("Image {test_idx} is a {}", dataset.images()[test_idx].1);
 
-    let example = OneNeuronExample::random(3);
-    tracing::debug!("{example:#?}");
-    tracing::info!("example.predict(0.5) = {}", example.predict(0.5));
-    let example = example.backpropagate(1.0, dataset, 100);
-    tracing::info!("after training: {example:#?}");
-    tracing::info!(example = ?example.predict(0.5));
+    let model = DModel::untrained(&[
+        (1, LayerSpec(28 * 28, 128)),
+        (2, LayerSpec(128, 128)),
+        (1, LayerSpec(128, 10)),
+    ]);
+
+    let model = model.train(dataset, 10);
     Ok(())
 }

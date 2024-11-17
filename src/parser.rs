@@ -1,6 +1,6 @@
 use std::fs;
 
-use nalgebra::SVector;
+use nalgebra::{DVector, SVector};
 use nom::{
     bytes::complete::take,
     combinator::{map, verify},
@@ -20,6 +20,13 @@ impl From<Image> for SVector<f32, { 28 * 28 }> {
     fn from(Image(data): Image) -> Self {
         let iterator = data.into_iter().map(|x| x as f32 / 255.0);
         SVector::from_iterator(iterator)
+    }
+}
+
+impl From<&Image> for DVector<f32> {
+    fn from(Image(data): &Image) -> Self {
+        let iterator = data.into_iter().map(|&x| x as f32 / 255.0);
+        DVector::from_iterator(28 * 28, iterator)
     }
 }
 
