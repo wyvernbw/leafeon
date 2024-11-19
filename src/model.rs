@@ -1,5 +1,15 @@
-use std::{fmt::Debug, io::Write, iter::Sum, ops::Deref, os::unix::net, sync::Arc};
+use std::{
+    f32::consts::SQRT_2,
+    fmt::{Debug, Display},
+    io::Write,
+    iter::Sum,
+    ops::Deref,
+    os::unix::net,
+    path::PathBuf,
+    sync::Arc,
+};
 
+use anyhow::Context;
 use bon::bon;
 use derive_more::derive::{Add, AsRef, Index, IndexMut, Mul, MulAssign, Sub};
 use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
@@ -12,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 
-use crate::parser::Dataset;
+use crate::{default_progress_style, default_progress_style_pink, parser::Dataset};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Layer {
@@ -21,14 +31,14 @@ pub struct Layer {
     pub bias: Array1<f32>,
 }
 
+const EPSILON: f32 = 0.1;
+
 pub fn relu(x: ArrayView1<f32>) -> Array1<f32> {
-    const EPSILON: f32 = 1e-5;
-    x.map(|x| x.max(EPSILON))
+    x.map(|x| if *x <= 0.0 { EPSILON * x } else { *x })
 }
 
 pub fn relu_derivative(x: ArrayView1<f32>) -> Array1<f32> {
-    const EPSILON: f32 = 1e-5;
-    x.map(|x| if x > &EPSILON { 1.0 } else { EPSILON })
+    x.map(|x| if *x > 0.0 { 1.0 } else { EPSILON })
 }
 
 pub enum BackwardKind<'a> {
@@ -77,6 +87,12 @@ pub struct ZValues(#[index] pub Array1<f32>);
 
 #[derive(Debug, Clone, Default, Index, IndexMut, Add, Sub, Mul, AsRef)]
 pub struct Activations(#[index] pub Array1<f32>);
+
+impl Display for Activations {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
 
 #[bon]
 impl Layer {
@@ -149,10 +165,15 @@ pub struct Network {
 
 #[bon]
 impl Network {
-    pub fn save_data(&self) -> anyhow::Result<()> {
+    #[builder]
+    pub fn from_pretrained(path: impl Into<PathBuf>) -> anyhow::Result<Self> {
+        let weights = std::fs::read(path.into()).context("Failed to read weights file")?;
+        bincode::deserialize(&weights).context("Failed to deserialize weights")
+    }
+    pub fn save_data(&self, path: impl Into<PathBuf>) -> anyhow::Result<()> {
         let data = bincode::serialize(self)?;
-        std::fs::create_dir_all("./train-data")?;
-        std::fs::File::create("./train-data/weights")?.write_all(&data)?;
+        //std::fs::create_dir_all(path.into())?;
+        std::fs::File::create(path.into())?.write_all(&data)?;
         Ok(())
     }
     #[builder]
@@ -161,7 +182,7 @@ impl Network {
             .iter()
             .scan(None, |prev_size_state, &size| {
                 let prev_size = prev_size_state.unwrap_or(input_size);
-                let generate = || random::<f32>() * 0.1;
+                let generate = || (random::<f32>() - 0.5) * 2.0 * SQRT_2 / input_size as f32;
                 let weights = Array2::from_shape_fn((size, prev_size), |_| generate());
                 let bias = Array1::from_shape_fn(size, |_| generate());
                 *prev_size_state = Some(size);
@@ -294,24 +315,26 @@ impl Network {
             learning_rate
         );
         // epoch loop
-        (1..=epochs).fold(self.clone(), |state, epoch| {
-            let chunks_span = tracing::info_span!("chunks", epochs);
-            chunks_span.pb_set_style(&ProgressStyle::default_bar());
-            chunks_span.pb_set_length(chunk_count as u64);
-            let _handle = chunks_span.entered();
+        let epoch_span = tracing::info_span!("epoch");
+        epoch_span.pb_set_length(epochs as u64);
+        epoch_span.pb_set_style(&default_progress_style_pink());
+        let epoch_span = epoch_span.entered();
 
-            tracing::info!(target: "model::training", "epoch: {}/{}", epoch, epochs);
+        (1..=epochs).fold(self.clone(), |state, _epoch| {
+            let chunk_span = tracing::info_span!(parent: &epoch_span, "chunk");
+            chunk_span.pb_set_length(chunk_count as u64);
+
+            let chunk_span = chunk_span.entered();
+
             let shuffled = dataset.images().iter().choose_multiple(
                 &mut rand::thread_rng(),
                 dataset.headers().image_count() as usize,
             );
             let images = shuffled.chunks(chunk_size);
             // chunk loop
-            images.fold(state, |state, chunk| {
+            let state = images.fold(state, |state, chunk| {
                 // image loop
-                let span = tracing::info_span!("images", "{}", chunk.len());
-                span.pb_set_length(chunk.len() as u64);
-                let span = span.entered();
+
                 let res = chunk
                     .into_par_iter()
                     .map(|(image, label)| {
@@ -330,15 +353,12 @@ impl Network {
                     })
                     .collect::<Vec<_>>()
                     .into_iter()
-                    .fold(state, |state, a| {
-                        span.pb_inc(1);
-
-                        state.gradient_descent(a)
-                    });
-                span.exit();
-                Span::current().pb_inc(1);
+                    .fold(state, |state, a| state.gradient_descent(a));
+                chunk_span.pb_inc(1);
                 res
-            })
+            });
+            epoch_span.pb_inc(1);
+            state
         })
     }
 }

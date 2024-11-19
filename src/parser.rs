@@ -1,5 +1,6 @@
-use std::{fs, u8};
+use std::{fs, path::PathBuf, u8};
 
+use anyhow::Context;
 use nalgebra::{DVector, SVector};
 use ndarray::Array1;
 use nom::{
@@ -10,8 +11,6 @@ use nom::{
     sequence::tuple,
     IResult,
 };
-
-const DATA_PATH: &str = "./data/train-images-idx3-ubyte";
 
 #[derive(Debug, Clone)]
 
@@ -67,12 +66,16 @@ impl Dataset {
     }
 }
 
-pub fn load_data() -> anyhow::Result<Dataset> {
-    let data = fs::read(DATA_PATH)?;
+#[bon::builder]
+pub fn load_data(
+    data_path: impl Into<PathBuf>,
+    labels_path: impl Into<PathBuf>,
+) -> anyhow::Result<Dataset> {
+    let data = fs::read(data_path.into()).context("failed to read data file")?;
     let (_, (headers, images)) = parse_images(Box::leak(data.into_boxed_slice()))?;
     assert!(headers.image_count == images.len() as u32);
     //Ok(dataset)
-    let labels_data = fs::read("./data/train-labels-idx1-ubyte")?;
+    let labels_data = fs::read(labels_path.into()).context("failed to read labels file")?;
     let (_, labels) = parse_labels(Box::leak(labels_data.into_boxed_slice()))?;
     let labeled_images = images.into_iter().zip(labels).collect::<Vec<_>>();
     Ok(Dataset {
