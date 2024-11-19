@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 use digit_recognition_rs::{
     default_progress_style,
     model::{Activations, Network},
-    parser::load_data,
+    parser::{load_data, Dataset},
 };
 use indicatif::ProgressStyle;
 use inquire::{prompt_text, prompt_u32, Select, Text};
@@ -29,6 +29,26 @@ pub enum Command {
     Train { save_path: String },
     Run { weights: String, example: u32 },
     GetAccuracy { weights: String },
+    GetTrainingAccuracy { weights: String },
+}
+
+pub fn untrained() -> Network {
+    Network::untrained()
+        .input_size(28 * 28)
+        .layer_spec(&[128, 128, 32, 10])
+        .call()
+}
+
+pub fn train(network: Network, dataset: Dataset) -> Network {
+    network
+        .train()
+        .dataset(dataset)
+        .accuracy(128.0 / 60_000.0)
+        //.accuracy(1.0)
+        .epochs(15)
+        .learning_rate(0.0005)
+        //.learning_rate(1.0)
+        .call()
 }
 
 fn main() -> anyhow::Result<()> {
@@ -42,17 +62,8 @@ fn main() -> anyhow::Result<()> {
                 .labels_path("./data/train-labels-idx1-ubyte")
                 .data_path("./data/train-images-idx3-ubyte")
                 .call()?;
-            let network = Network::untrained()
-                .input_size(28 * 28)
-                .layer_spec(&[128, 128, 32, 10])
-                .call();
-            let network = network
-                .train()
-                .dataset(dataset)
-                .accuracy(0.01)
-                .epochs(5)
-                .learning_rate(0.001)
-                .call();
+            let network = untrained();
+            let network = train(network, dataset);
 
             tracing::info!("finished training");
             network.save_data(save_path)?;
@@ -68,10 +79,50 @@ fn main() -> anyhow::Result<()> {
                 .images()
                 .get(example as usize)
                 .context("Invalid index!")?;
+            dataset.print_image(example as usize);
             let example = Activations(image.into());
-            tracing::info!("result: {:?}", network.forward(example).1.last())
+            let result = network
+                .forward(example)
+                .1
+                .last()
+                .context("No Output Layer!")?
+                .0
+                .clone();
+            tracing::info!("{result}")
         }
-        Command::GetAccuracy { weights } => todo!(),
+        Command::GetAccuracy { weights } => {
+            let dataset = load_data()
+                .labels_path("./data/t10k-labels-idx1-ubyte")
+                .data_path("./data/t10k-images-idx3-ubyte")
+                .call()?;
+
+            let network = untrained();
+            tracing::info!(
+                "untrained accuracy: {}%",
+                network.accuracy(dataset.clone()) * 100.0
+            );
+
+            let network = Network::from_pretrained().path(weights).call()?;
+            let accuracy = network.accuracy(dataset);
+            let accuracy = accuracy * 100.0;
+            tracing::info!("accuracy: {accuracy:3}%");
+        }
+        Command::GetTrainingAccuracy { weights } => {
+            let dataset = load_data()
+                .labels_path("./data/train-labels-idx1-ubyte")
+                .data_path("./data/train-images-idx3-ubyte")
+                .call()?;
+            let network = untrained();
+            tracing::info!(
+                "untrained accuracy: {}%",
+                network.accuracy(dataset.clone()) * 100.0
+            );
+            let network = Network::from_pretrained().path(weights).call()?;
+
+            let accuracy = network.accuracy(dataset);
+            let accuracy = accuracy * 100.0;
+            tracing::info!("accuracy: {accuracy:3}%");
+        }
     }
 
     Ok(())
@@ -84,6 +135,7 @@ fn init_tracing() -> anyhow::Result<()> {
         .with(
             tracing_subscriber::fmt::layer()
                 .without_time()
+                .with_file(false)
                 .with_writer(indicatif_layer.get_stderr_writer())
                 .with_filter(tracing_subscriber::filter::LevelFilter::INFO),
         )
@@ -113,6 +165,12 @@ fn prompt_command() -> anyhow::Result<Command> {
                 .with_default("./train-data/data")
                 .prompt()?;
             Command::GetAccuracy { weights }
+        }
+        Command::GetTrainingAccuracy { .. } => {
+            let weights = Text::new("Train data load path: ")
+                .with_default("./train-data/data")
+                .prompt()?;
+            Command::GetTrainingAccuracy { weights }
         }
     };
     Ok(select)

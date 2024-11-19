@@ -1,4 +1,6 @@
 use std::{
+    cmp::Ordering,
+    convert::identity,
     f32::consts::SQRT_2,
     fmt::{Debug, Display},
     io::Write,
@@ -39,6 +41,12 @@ pub fn relu(x: ArrayView1<f32>) -> Array1<f32> {
 
 pub fn relu_derivative(x: ArrayView1<f32>) -> Array1<f32> {
     x.map(|x| if *x > 0.0 { 1.0 } else { EPSILON })
+}
+
+pub fn softmax(logits: ArrayView1<f32>) -> Array1<f32> {
+    let exp_logits = logits.map(|x| x.exp()); // Apply exp to each logit
+    let sum_exp_logits = exp_logits.sum(); // Sum of exponentials
+    exp_logits.map(|x| x / sum_exp_logits) // Normalize by the sum to get probabilities
 }
 
 pub enum BackwardKind<'a> {
@@ -126,7 +134,7 @@ impl Layer {
                 target,
             } => {
                 assert_eq!(current_activation.0.dim(), target.0.dim());
-                let err = (&current_activation.0 - &target.0) * relu_derivative(z_values.view());
+                let err = &current_activation.0 - &target.0; // * relu_derivative(z_values.view());
                 Loss(err)
             }
             BackwardKind::Hidden {
@@ -138,7 +146,7 @@ impl Layer {
                 Loss(err)
             }
         };
-        // FIXME: here error does not increase in size!
+        // DONE: here error does not increase in size!
         let weight_gradient = error
             .0
             .broadcast((1, error.0.len()))
@@ -182,9 +190,9 @@ impl Network {
             .iter()
             .scan(None, |prev_size_state, &size| {
                 let prev_size = prev_size_state.unwrap_or(input_size);
-                let generate = || (random::<f32>() - 0.5) * 2.0 * SQRT_2 / input_size as f32;
+                let generate = || random::<f32>() * (2.0 / prev_size as f32).sqrt();
                 let weights = Array2::from_shape_fn((size, prev_size), |_| generate());
-                let bias = Array1::from_shape_fn(size, |_| generate());
+                let bias = Array1::from_shape_fn(size, |_| 0.0);
                 *prev_size_state = Some(size);
                 Some(Layer { weights, bias })
             })
@@ -193,7 +201,7 @@ impl Network {
     }
 
     pub fn forward(&self, input: Activations) -> (Vec<ZValues>, Vec<Activations>) {
-        let (z_values, activations): (Vec<_>, Vec<_>) = self
+        let (z_values, mut activations): (Vec<_>, Vec<_>) = self
             .layers
             .iter()
             .scan(input, |activations, layer| {
@@ -202,6 +210,8 @@ impl Network {
                 Some((z, a))
             })
             .unzip();
+        let output = activations.last_mut().expect("No output layer!");
+        *output = Activations(softmax(output.0.view()));
         (z_values, activations)
     }
 
@@ -320,7 +330,7 @@ impl Network {
         epoch_span.pb_set_style(&default_progress_style_pink());
         let epoch_span = epoch_span.entered();
 
-        (1..=epochs).fold(self.clone(), |state, _epoch| {
+        (1..=epochs).fold(self, |state, _epoch| {
             let chunk_span = tracing::info_span!(parent: &epoch_span, "chunk");
             chunk_span.pb_set_length(chunk_count as u64);
 
@@ -332,9 +342,8 @@ impl Network {
             );
             let images = shuffled.chunks(chunk_size);
             // chunk loop
-            let state = images.fold(state, |state, chunk| {
+            let state = images.fold(state, |chunk_state, chunk| {
                 // image loop
-
                 let res = chunk
                     .into_par_iter()
                     .map(|(image, label)| {
@@ -342,10 +351,11 @@ impl Network {
                             i if i == *label as usize => 1.0,
                             _ => 0.0,
                         }));
-                        let res = self
+                        let image: Array1<f32> = image.into();
+                        let res = chunk_state
                             .backprop()
                             .target(target)
-                            .input(Activations(image.into()))
+                            .input(Activations(image))
                             .learning_rate(learning_rate)
                             .call();
                         res
@@ -353,13 +363,48 @@ impl Network {
                     })
                     .collect::<Vec<_>>()
                     .into_iter()
-                    .fold(state, |state, a| state.gradient_descent(a));
+                    .fold(chunk_state.clone(), |state, a| state.gradient_descent(a));
                 chunk_span.pb_inc(1);
                 res
             });
             epoch_span.pb_inc(1);
             state
         })
+    }
+
+    pub fn predict(outputs: Activations) -> (usize, f32) {
+        outputs
+            .0
+            .iter()
+            .cloned()
+            .enumerate()
+            .max_by(|(_, x), (_, y)| x.partial_cmp(y).unwrap_or(Ordering::Equal))
+            .expect("No output layer!")
+    }
+
+    pub fn accuracy(&self, dataset: Dataset) -> f32 {
+        let span = tracing::info_span!("accuracy");
+        span.pb_set_length(dataset.headers().image_count() as u64);
+        span.pb_set_style(&default_progress_style_pink());
+        span.pb_set_message("Calculating accuracy...");
+        let span = span.entered();
+        let correct = dataset
+            .images()
+            .iter()
+            .map(|(image, label)| {
+                let output = self
+                    .forward(Activations(image.into()))
+                    .1
+                    .last()
+                    .unwrap()
+                    .clone();
+                let (prediction, _) = Self::predict(output);
+                span.pb_inc(1);
+                prediction == *label as usize
+            })
+            .filter(|x| *x)
+            .count();
+        correct as f32 / dataset.headers().image_count() as f32
     }
 }
 
