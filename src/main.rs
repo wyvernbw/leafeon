@@ -34,8 +34,10 @@ fn main() -> anyhow::Result<()> {
         .train()
         .dataset(dataset)
         .accuracy(0.01)
-        .epochs(1)
+        .epochs(3)
         .call();
     tracing::info!("finished training");
+    network.save_data()?;
+    tracing::info!("succesfully saved train data");
     Ok(())
 }

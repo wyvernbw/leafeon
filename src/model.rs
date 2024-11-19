@@ -1,4 +1,4 @@
-use std::{fmt::Debug, iter::Sum, ops::Deref, os::unix::net, sync::Arc};
+use std::{fmt::Debug, io::Write, iter::Sum, ops::Deref, os::unix::net, sync::Arc};
 
 use bon::bon;
 use derive_more::derive::{Add, AsRef, Index, IndexMut, Mul, MulAssign, Sub};
@@ -149,6 +149,12 @@ pub struct Network {
 
 #[bon]
 impl Network {
+    pub fn save_data(&self) -> anyhow::Result<()> {
+        let data = bincode::serialize(self)?;
+        std::fs::create_dir_all("./train-data")?;
+        std::fs::File::create("./train-data/weights")?.write_all(&data)?;
+        Ok(())
+    }
     #[builder]
     pub fn untrained(input_size: usize, layer_spec: &[usize]) -> Self {
         let layers = layer_spec
@@ -280,6 +286,7 @@ impl Network {
         let chunk_size = dataset.headers().image_count() as f32 * accuracy;
         let learning_rate = learning_rate.unwrap_or(0.1) / chunk_size;
         let chunk_size = chunk_size as usize;
+        let chunk_count = dataset.headers().image_count() as usize / chunk_size;
         tracing::info!(
             target: "model::training",
             "chunk size: {}, learning_rate: {}",
@@ -288,10 +295,10 @@ impl Network {
         );
         // epoch loop
         (1..=epochs).fold(self.clone(), |state, epoch| {
-            let span = tracing::info_span!("epoch", epoch, epochs);
-            span.pb_set_style(&ProgressStyle::default_bar());
-            span.pb_set_length(chunk_size as u64);
-            let _handle = span.entered();
+            let chunks_span = tracing::info_span!("chunks", epochs);
+            chunks_span.pb_set_style(&ProgressStyle::default_bar());
+            chunks_span.pb_set_length(chunk_count as u64);
+            let _handle = chunks_span.entered();
 
             tracing::info!(target: "model::training", "epoch: {}/{}", epoch, epochs);
             let shuffled = dataset.images().iter().choose_multiple(
@@ -300,9 +307,11 @@ impl Network {
             );
             let images = shuffled.chunks(chunk_size);
             // chunk loop
-
             images.fold(state, |state, chunk| {
                 // image loop
+                let span = tracing::info_span!("images", "{}", chunk.len());
+                span.pb_set_length(chunk.len() as u64);
+                let span = span.entered();
                 let res = chunk
                     .into_par_iter()
                     .map(|(image, label)| {
@@ -321,7 +330,12 @@ impl Network {
                     })
                     .collect::<Vec<_>>()
                     .into_iter()
-                    .fold(state, |state, a| state.gradient_descent(a));
+                    .fold(state, |state, a| {
+                        span.pb_inc(1);
+
+                        state.gradient_descent(a)
+                    });
+                span.exit();
                 Span::current().pb_inc(1);
                 res
             })
