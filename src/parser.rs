@@ -1,6 +1,7 @@
-use std::fs;
+use std::{fs, u8};
 
 use nalgebra::{DVector, SVector};
+use ndarray::Array1;
 use nom::{
     bytes::complete::take,
     combinator::{map, verify},
@@ -27,6 +28,13 @@ impl From<&Image> for DVector<f32> {
     fn from(Image(data): &Image) -> Self {
         let iterator = data.into_iter().map(|&x| x as f32 / 255.0);
         DVector::from_iterator(28 * 28, iterator)
+    }
+}
+
+impl From<&Image> for Array1<f32> {
+    fn from(Image(data): &Image) -> Self {
+        let iterator = data.into_iter().map(|&x| x as f32 / u8::MAX as f32);
+        Array1::from_iter(iterator)
     }
 }
 
