@@ -22,13 +22,22 @@ derive_more = { version = "1.0.0", features = [
 ] }
 indicatif = "0.17.9"
 nalgebra = { version = "0.33.2", features = ["rand"] }
-ndarray = { version = "0.16.1", features = ["matrixmultiply-threading", "rayon", "serde"] }
+ndarray = { version = "0.16.1", features = [
+	"matrixmultiply-threading",
+	"serde",
+	"blas",
+] }
+blas-src = { version = "0.10", default-features = false, features = [
+	"accelerate",
+] }
+#openblas-src = { version = "0.10", features = ["cblas", "system"] }
 nom = "*"
 rand = "0.8.5"
 rayon = "1.10.0"
-serde = "1.0.215"
+serde = { version = "1.0.215", features = ["derive"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
+tracing-indicatif = "0.3.6"
 
 [dev-dependencies]
 criterion = "0.5.1"

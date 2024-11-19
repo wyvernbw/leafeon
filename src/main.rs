@@ -1,22 +1,23 @@
-#![feature(impl_trait_in_assoc_type)]
-#![feature(generic_arg_infer)]
-#![feature(iter_array_chunks)]
-#![feature(iter_map_windows)]
-#![feature(inherent_associated_types)]
 #![feature(random)]
-#![feature(generic_const_exprs)]
 
-use std::{os::unix::net, random::random};
+use std::random::random;
 
 use digit_recognition_rs::{model::Network, parser::load_data};
-use tracing::Level;
+use indicatif::ProgressStyle;
+use tracing::{instrument::WithSubscriber, Span};
+use tracing_indicatif::IndicatifLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::fmt()
-        .compact()
-        .without_time()
-        //.with_max_level(Level::DEBUG)
+    let indicatif_layer = IndicatifLayer::new().with_progress_style(
+        ProgressStyle::default_bar(), //.template("{elapsed} {span_name} {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")?,
+    );
+
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().with_writer(indicatif_layer.get_stderr_writer()))
+        .with(indicatif_layer)
         .init();
+
     let dataset = load_data()?;
 
     let test_idx = random::<u32>() % dataset.headers().image_count();
@@ -29,7 +30,6 @@ fn main() -> anyhow::Result<()> {
         .input_size(28 * 28)
         .layer_spec(&[128, 128, 32, 10])
         .call();
-    tracing::info!(?network);
     let network = network
         .train()
         .dataset(dataset)

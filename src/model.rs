@@ -2,13 +2,15 @@ use std::{fmt::Debug, iter::Sum, ops::Deref, os::unix::net, sync::Arc};
 
 use bon::bon;
 use derive_more::derive::{Add, AsRef, Index, IndexMut, Mul, MulAssign, Sub};
-use indicatif::{ProgressBar, ProgressIterator};
+use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
 use ndarray::prelude::*;
 use rand::{random, seq::IteratorRandom};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use serde::{Deserialize, Serialize};
+use tracing::{instrument, Span};
+use tracing_indicatif::span_ext::IndicatifSpanExt;
 
 use crate::parser::Dataset;
 
@@ -86,13 +88,7 @@ impl Layer {
     pub fn forward(&self, prev_activation: &Activations) -> (ZValues, Activations) {
         let Activations(prev_activation) = prev_activation;
         assert_eq!(self.weights.dim().1, prev_activation.dim());
-        tracing::debug!(
-            "multiplying {a:?} x {b:?}",
-            a = prev_activation.dim(),
-            b = &self.weights.dim()
-        );
         let z = self.weights.dot(&prev_activation.view());
-        tracing::debug!("adding {:?} + {:?}", z.dim(), &self.bias.dim());
         assert_eq!(z.dim(), self.bias.dim());
         let z = z + &self.bias;
         let a = relu(z.view());
@@ -292,6 +288,11 @@ impl Network {
         );
         // epoch loop
         (1..=epochs).fold(self.clone(), |state, epoch| {
+            let span = tracing::info_span!("epoch", epoch, epochs);
+            span.pb_set_style(&ProgressStyle::default_bar());
+            span.pb_set_length(chunk_size as u64);
+            let _handle = span.entered();
+
             tracing::info!(target: "model::training", "epoch: {}/{}", epoch, epochs);
             let shuffled = dataset.images().iter().choose_multiple(
                 &mut rand::thread_rng(),
@@ -299,26 +300,30 @@ impl Network {
             );
             let images = shuffled.chunks(chunk_size);
             // chunk loop
-            let bar = ProgressBar::new(chunk_size as u64);
-            images.progress_with(bar).fold(state, |state, chunk| {
+
+            images.fold(state, |state, chunk| {
                 // image loop
-                chunk
+                let res = chunk
                     .into_par_iter()
                     .map(|(image, label)| {
                         let target = Activations(Array1::from_shape_fn(10, |i| match i {
                             i if i == *label as usize => 1.0,
                             _ => 0.0,
                         }));
-                        self.backprop()
+                        let res = self
+                            .backprop()
                             .target(target)
                             .input(Activations(image.into()))
                             .learning_rate(learning_rate)
-                            .call()
+                            .call();
+                        res
                         //state.gradient_descent((d_weights, d_bias))
                     })
                     .collect::<Vec<_>>()
                     .into_iter()
-                    .fold(state, |state, a| state.gradient_descent(a))
+                    .fold(state, |state, a| state.gradient_descent(a));
+                Span::current().pb_inc(1);
+                res
             })
         })
     }
