@@ -39,10 +39,10 @@ pub fn train(network: Network, dataset: Dataset) -> Network {
     network
         .train()
         .dataset(dataset)
-        .accuracy(128.0 / 60_000.0)
+        .accuracy(32.0 / 60_000.0)
         //.accuracy(1.0)
         .epochs(15)
-        .learning_rate(0.05)
+        .learning_rate(0.005)
         //.learning_rate(1.0)
         .call()
 }
