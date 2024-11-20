@@ -29,7 +29,7 @@ pub enum Command {
 pub fn untrained() -> Network {
     Network::untrained()
         .input_size(28 * 28)
-        .layer_spec(&[128, 128, 32, 10])
+        .layer_spec(&[64, 64, 10])
         .call()
 }
 
