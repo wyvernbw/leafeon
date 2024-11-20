@@ -8,6 +8,7 @@ members = [
 	"leafeon-types",
 	"leafeon-core",
 	"leafeon-gpu",
+	"leafeon-server",
 	"leafeon-shaders",
 	"leafeon-shaders/leafeon-mmul",
 ]
