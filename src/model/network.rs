@@ -2,36 +2,26 @@ use pretty_assertions::{assert_eq, assert_ne};
 
 use std::{
     cmp::Ordering,
-    convert::identity,
-    f32::consts::SQRT_2,
     fmt::{Debug, Display},
     io::Write,
     iter::Sum,
-    ops::Deref,
-    os::unix::net,
     path::PathBuf,
-    sync::Arc,
 };
 
 use anyhow::Context;
 use bon::bon;
 use charming::series::Series;
 use derive_more::derive::{Add, AsRef, Index, IndexMut, Mul as DeriveMoreMul, MulAssign, Sub};
-use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
-use ndarray::{prelude::*, RawData};
+use ndarray::prelude::*;
 use rand::{random, seq::IteratorRandom};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use serde::{Deserialize, Serialize};
 use std::ops::Mul;
-use tracing::{instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 
-use crate::{
-    default_progress_style, default_progress_style_pink, model::image_logger::ImageLogger,
-    parser::Dataset,
-};
+use crate::{default_progress_style_pink, parser::Dataset};
 
 use super::image_logger::IntoHeatmapSeries;
 
@@ -233,11 +223,11 @@ impl Network {
         Network { layers }
     }
 
-    pub fn forward(&self, input: Activations) -> (Vec<ZValues>, Vec<Activations>) {
+    pub fn forward(&self, input: &Activations) -> (Vec<ZValues>, Vec<Activations>) {
         let (z_values, mut activations): (Vec<_>, Vec<_>) = self
             .layers
             .iter()
-            .scan(input, |activations, layer| {
+            .scan(input.clone(), |activations, layer| {
                 let (z, a) = layer.forward().prev_activation(activations).call();
                 assert!(!a.0.is_any_nan(), "NaN in forward pass");
                 *activations = a.clone();
@@ -257,7 +247,7 @@ impl Network {
         input: Activations,
         learning_rate: f32,
     ) -> (Vec<WeightGradient>, Vec<BiasGradient>) {
-        let (mut z_values, mut activations) = self.forward(input.clone());
+        let (mut z_values, mut activations) = self.forward(&input);
         assert!(
             !activations.iter().any(|x| x.0.is_any_nan()),
             "NaN in forward pass activations"
@@ -400,7 +390,7 @@ impl Network {
             // chunk loop
             let state = images
                 .enumerate()
-                .fold(state, |chunk_state, (chunk_idx, chunk)| {
+                .fold(state, |chunk_state, (_chunk_idx, chunk)| {
                     // image loop
                     let res = chunk
                         .into_par_iter()
@@ -453,7 +443,7 @@ impl Network {
             .iter()
             .map(|(image, label)| {
                 let output = self
-                    .forward(Activations(image.into()))
+                    .forward(&Activations(image.into()))
                     .1
                     .last()
                     .unwrap()

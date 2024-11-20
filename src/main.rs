@@ -1,7 +1,5 @@
 #![feature(random)]
 
-use std::random::random;
-
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use digit_recognition_rs::{
@@ -9,10 +7,8 @@ use digit_recognition_rs::{
     model::network::{Activations, Network},
     parser::{load_data, Dataset},
 };
-use indicatif::ProgressStyle;
-use inquire::{prompt_text, prompt_u32, Select, Text};
-use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
-use tracing::{instrument::WithSubscriber, Span};
+use inquire::{prompt_u32, Select, Text};
+use strum::{Display, EnumIter, IntoEnumIterator};
 use tracing_indicatif::IndicatifLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
@@ -82,7 +78,7 @@ fn main() -> anyhow::Result<()> {
             dataset.print_image(example as usize);
             let example = Activations(image.into());
             let result = network
-                .forward(example)
+                .forward(&example)
                 .1
                 .last()
                 .context("No Output Layer!")?
@@ -175,5 +171,5 @@ fn prompt_command() -> anyhow::Result<Command> {
             Command::GetTrainingAccuracy { weights }
         }
     };
-    Ok(select)
+    Ok(command)
 }

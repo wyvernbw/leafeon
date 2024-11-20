@@ -1,3 +1,4 @@
+#![allow(incomplete_features)]
 #![feature(impl_trait_in_assoc_type)]
 #![feature(generic_arg_infer)]
 #![feature(iter_array_chunks)]

@@ -2,14 +2,13 @@ use std::path::Path;
 
 use anyhow::Context;
 use charming::{
-    component::{Axis, Grid, VisualMap},
+    component::{Grid, VisualMap},
     datatype::{
-        CompositeValue::{Array, Number},
-        DataFrame, DataPoint, DataPointItem,
+        CompositeValue::Number,
+        DataFrame, DataPoint,
         NumericValue::Float,
     },
-    df,
-    element::{label, AxisType, Emphasis, ItemStyle, Label, Orient, SplitArea, Tooltip},
+    element::{Emphasis, ItemStyle, Label, Orient, Tooltip},
     series::{Heatmap, Series},
     Chart, HtmlRenderer,
 };

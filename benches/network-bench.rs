@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use digit_recognition_rs::{
-    model::{Activations, Network},
+    model::network::{Activations, Network},
     parser::load_data,
 };
 use ndarray::Array1;
@@ -8,7 +8,11 @@ use rand::seq::IteratorRandom;
 use std::hint::black_box;
 
 fn benchmark(c: &mut Criterion) {
-    let dataset = load_data().expect("Failed to load dataset");
+    let dataset = load_data()
+        .data_path("./data/train-images-idx3-ubyte")
+        .labels_path("./data/train-labels-idx1-ubyte")
+        .call()
+        .expect("Failed to load dataset");
     c.bench_function("backprop", |b| {
         b.iter(|| {
             let network = Network::untrained()

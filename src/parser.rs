@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, u8};
+use std::{fs, path::PathBuf};
 
 use anyhow::Context;
 use nalgebra::{DVector, SVector};
@@ -25,14 +25,14 @@ impl From<Image> for SVector<f32, { 28 * 28 }> {
 
 impl From<&Image> for DVector<f32> {
     fn from(Image(data): &Image) -> Self {
-        let iterator = data.into_iter().map(|&x| x as f32 / 255.0);
+        let iterator = data.iter().map(|&x| x as f32 / 255.0);
         DVector::from_iterator(28 * 28, iterator)
     }
 }
 
 impl From<&Image> for Array1<f32> {
     fn from(Image(data): &Image) -> Self {
-        let iterator = data.into_iter().map(|&x| x as f32 / u8::MAX as f32);
+        let iterator = data.iter().map(|&x| x as f32 / u8::MAX as f32);
         Array1::from_iter(iterator)
     }
 }
