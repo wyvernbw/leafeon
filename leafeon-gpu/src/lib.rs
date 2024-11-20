@@ -1,3 +1,5 @@
+extern crate blas_src;
+
 pub mod gpu;
 #[path = "./matrix-mul.rs"]
 pub mod matrix_mul;

@@ -11,11 +11,17 @@ wgpu = "23.0.0"
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-ndarray = { workspace = true }
+ndarray = { workspace = true, default-features = false }
 tracing-log = "0.2.0"
 smol = "2.0.2"
 bon = { workspace = true }
 bytemuck = { version = "1.20.0", features = ["derive"] }
+pretty_assertions = { workspace = true }
+rstest = "0.23.0"
+blas-src = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }
 
 [target.wasm32-unknown-unknown.dependencies]
 console_error_panic_hook = "0.1.6"
