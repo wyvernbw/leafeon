@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["leafeon-types", "leafeon-core", "leafeon-gpu"]
+members = ["leafeon-types", "leafeon-core", "leafeon-gpu", "leafeon-server"]
 
 [[bench]]
 name = "network-bench"
@@ -28,6 +28,7 @@ nom = { workspace = true }
 rand = { workspace = true }
 
 [workspace.dependencies]
+base64 = "0.22.1"
 leafeon-types = { path = "./leafeon-types" }
 leafeon-core = { path = "./leafeon-core" }
 leafeon-gpu = { path = "./leafeon-gpu" }
