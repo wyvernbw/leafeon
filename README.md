@@ -1,6 +1,6 @@
-# Leafeon 🥬🦮
+![](https://static.wikia.nocookie.net/pokemon-daybreak/images/e/ef/470.png/revision/latest?cb=20200731231258)
 
-Leafeon ecosystem:
+# Leafeon 🥬🦮
 - `leafeon-core`: internal neural network implementation
 - `leafeon-types`: common types used by leafeon crates
 - `leafeon-gpu`: matrix multiplication and outer product GPU implementation. unused
