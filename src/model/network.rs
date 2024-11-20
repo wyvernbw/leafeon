@@ -402,7 +402,7 @@ impl Network {
                 .enumerate()
                 .fold(state, |chunk_state, (chunk_idx, chunk)| {
                     // image loop
-                    let res: (Vec<_>, Vec<_>) = chunk
+                    let res = chunk
                         .into_par_iter()
                         .map(|(image, label)| {
                             let target = Activations(Array1::from_shape_fn(10, |i| match i {
@@ -419,21 +419,11 @@ impl Network {
                             res
                             //state.gradient_descent((d_weights, d_bias))
                         })
-                        .unzip();
-                    let res = Self::compose_gradients(&res.0, &res.1);
-                    if chunk_idx == 0 {
-                        match ImageLogger::log_many(
-                            res.0.clone(),
-                            "weights",
-                            format!("./charts/chunk_{chunk_idx}"),
-                        ) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                tracing::error!("Failed to log images: {}", e);
-                            }
-                        }
-                    };
-                    let res = chunk_state.gradient_descent(res);
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .fold(chunk_state, |chunk_state, gradients| {
+                            chunk_state.gradient_descent(gradients)
+                        });
                     chunk_span.pb_inc(1);
                     res
                 });
