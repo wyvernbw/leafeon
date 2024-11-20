@@ -6,7 +6,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use digit_recognition_rs::{
     default_progress_style,
-    model::{Activations, Network},
+    model::network::{Activations, Network},
     parser::{load_data, Dataset},
 };
 use indicatif::ProgressStyle;
@@ -136,6 +136,8 @@ fn init_tracing() -> anyhow::Result<()> {
             tracing_subscriber::fmt::layer()
                 .without_time()
                 .with_file(false)
+                .with_target(false)
+                .with_thread_ids(true)
                 .with_writer(indicatif_layer.get_stderr_writer())
                 .with_filter(tracing_subscriber::filter::LevelFilter::INFO),
         )

@@ -1,3 +1,5 @@
+use pretty_assertions::{assert_eq, assert_ne};
+
 use std::{
     cmp::Ordering,
     convert::identity,
@@ -13,18 +15,25 @@ use std::{
 
 use anyhow::Context;
 use bon::bon;
-use derive_more::derive::{Add, AsRef, Index, IndexMut, Mul, MulAssign, Sub};
+use charming::series::Series;
+use derive_more::derive::{Add, AsRef, Index, IndexMut, Mul as DeriveMoreMul, MulAssign, Sub};
 use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
-use ndarray::prelude::*;
+use ndarray::{prelude::*, RawData};
 use rand::{random, seq::IteratorRandom};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use serde::{Deserialize, Serialize};
+use std::ops::Mul;
 use tracing::{instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 
-use crate::{default_progress_style, default_progress_style_pink, parser::Dataset};
+use crate::{
+    default_progress_style, default_progress_style_pink, model::image_logger::ImageLogger,
+    parser::Dataset,
+};
+
+use super::image_logger::IntoHeatmapSeries;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Layer {
@@ -44,8 +53,13 @@ pub fn relu_derivative(x: ArrayView1<f32>) -> Array1<f32> {
 }
 
 pub fn softmax(logits: ArrayView1<f32>) -> Array1<f32> {
-    let exp_logits = logits.map(|x| x.exp()); // Apply exp to each logit
+    assert_eq!(logits.is_any_infinite(), false, "got inf in softmax input");
+    assert_eq!(logits.is_any_nan(), false, "got nan in softmax input");
+    let max_logit = logits.fold(f32::NEG_INFINITY, |a, &b| a.max(b)); // Find max logit
+    let exp_logits = logits.map(|x| (x - max_logit).exp()); // Apply exp to each logit
+    assert_eq!(exp_logits.is_any_infinite(), false, "overflow after exp");
     let sum_exp_logits = exp_logits.sum(); // Sum of exponentials
+    assert_ne!(sum_exp_logits, 0.0, "sum_exp_logits is 0, division by 0");
     exp_logits.map(|x| x / sum_exp_logits) // Normalize by the sum to get probabilities
 }
 
@@ -69,7 +83,7 @@ impl Debug for BackwardKind<'_> {
     }
 }
 
-#[derive(Debug, Clone, Default, Mul, MulAssign, Add, Sub)]
+#[derive(Debug, Clone, Default, DeriveMoreMul, MulAssign, Add, Sub)]
 pub struct WeightGradient(pub Array2<f32>);
 
 impl Sum for WeightGradient {
@@ -78,7 +92,7 @@ impl Sum for WeightGradient {
     }
 }
 
-#[derive(Debug, Clone, Default, MulAssign, Mul, Add, Sub)]
+#[derive(Debug, Clone, Default, MulAssign, DeriveMoreMul, Add, Sub)]
 pub struct BiasGradient(pub Array1<f32>);
 
 impl Sum for BiasGradient {
@@ -93,7 +107,7 @@ pub struct Loss(pub Array1<f32>);
 #[derive(Debug, Clone, Default, Index, IndexMut)]
 pub struct ZValues(#[index] pub Array1<f32>);
 
-#[derive(Debug, Clone, Default, Index, IndexMut, Add, Sub, Mul, AsRef)]
+#[derive(Debug, Clone, Default, Index, IndexMut, Add, Sub, DeriveMoreMul, AsRef)]
 pub struct Activations(#[index] pub Array1<f32>);
 
 impl Display for Activations {
@@ -110,12 +124,16 @@ impl Layer {
     }
     #[builder]
     pub fn forward(&self, prev_activation: &Activations) -> (ZValues, Activations) {
+        assert!(!prev_activation.0.is_any_nan(), "NaN in prev activation");
         let Activations(prev_activation) = prev_activation;
         assert_eq!(self.weights.dim().1, prev_activation.dim());
         let z = self.weights.dot(&prev_activation.view());
+        assert!(!z.is_any_nan(), "NaN in z value calculation");
         assert_eq!(z.dim(), self.bias.dim());
         let z = z + &self.bias;
+        assert!(!z.is_any_nan(), "NaN in z value after bias addition");
         let a = relu(z.view());
+        assert!(!a.is_any_nan(), "NaN in a value after relu");
         (ZValues(z), Activations(a))
     }
     #[builder]
@@ -126,6 +144,7 @@ impl Layer {
         pass_data: BackwardKind<'_>,
     ) -> (WeightGradient, BiasGradient, Loss) {
         let Activations(prev_activations) = prev_activations;
+        assert!(!prev_activations.is_any_nan(), "NaN in prev activations");
         let ZValues(z_values) = z_values;
         //tracing::debug!(?prev_activations, ?z_values, ?pass_data);
         let error = match pass_data {
@@ -134,7 +153,14 @@ impl Layer {
                 target,
             } => {
                 assert_eq!(current_activation.0.dim(), target.0.dim());
+                assert!(
+                    !current_activation.0.is_any_nan(),
+                    "NaN in error output layer current layer activation"
+                );
+                assert!(!target.0.is_any_nan(), "NaN in output layer target");
                 let err = &current_activation.0 - &target.0; // * relu_derivative(z_values.view());
+                assert!(!err.is_any_nan(), "NaN in output layer error");
+
                 Loss(err)
             }
             BackwardKind::Hidden {
@@ -143,21 +169,28 @@ impl Layer {
             } => {
                 let err =
                     next_layer.weights.t().dot(&next_error.0) * relu_derivative(z_values.view());
+                assert!(!err.is_any_nan(), "NaN in hidden layer error");
+
                 Loss(err)
             }
         };
-        // DONE: here error does not increase in size!
-        let weight_gradient = error
+        // d_w = d_l * a^T
+        let a_mat = prev_activations
+            .broadcast((error.0.len(), prev_activations.len()))
+            .expect("Failed to broadcast prev_activations column vector to matrix");
+        assert_eq!(a_mat.is_any_nan(), false);
+        let binding = error
             .0
             .broadcast((1, error.0.len()))
-            .expect("Failed to broadcast error column vector to matrix")
-            .dot(
-                &prev_activations
-                    .broadcast((1, prev_activations.len()))
-                    .expect("Failed to broadcast prev_activations column vector to matrix")
-                    .t(),
-            );
-        let bias_gradient = error.0.clone();
+            .expect("Failed to broadcast error column vector to matrix");
+        let error_mat = binding.t();
+        assert_eq!(error_mat.is_any_nan(), false);
+        let weight_gradient = error_mat.to_owned().mul(a_mat).clamp(-1.0, 1.0);
+        assert_eq!(weight_gradient.is_any_nan(), false);
+        //tracing::info!(prev_activations = ?a_mat.dim(), error = ?error_mat.dim(), weight_gradient = ?weight_gradient.dim());
+        let bias_gradient = error.0.clone().clamp(-1.0, 1.0);
+        assert!(!weight_gradient.is_any_nan());
+        assert!(!bias_gradient.is_any_nan());
         (
             WeightGradient(weight_gradient),
             BiasGradient(bias_gradient),
@@ -206,12 +239,14 @@ impl Network {
             .iter()
             .scan(input, |activations, layer| {
                 let (z, a) = layer.forward().prev_activation(activations).call();
+                assert!(!a.0.is_any_nan(), "NaN in forward pass");
                 *activations = a.clone();
                 Some((z, a))
             })
             .unzip();
         let output = activations.last_mut().expect("No output layer!");
         *output = Activations(softmax(output.0.view()));
+        assert!(!output.0.is_any_nan(), "NaN in output layer after softmax");
         (z_values, activations)
     }
 
@@ -222,7 +257,17 @@ impl Network {
         input: Activations,
         learning_rate: f32,
     ) -> (Vec<WeightGradient>, Vec<BiasGradient>) {
-        let (z_values, activations) = self.forward(input);
+        let (mut z_values, mut activations) = self.forward(input.clone());
+        assert!(
+            !activations.iter().any(|x| x.0.is_any_nan()),
+            "NaN in forward pass activations"
+        );
+        assert!(
+            !z_values.iter().any(|x| x.0.is_any_nan()),
+            "NaN in forward pass z_values"
+        );
+        z_values.insert(0, ZValues(input.0.clone()));
+        activations.insert(0, input);
         let (d_weights, d_biases): (Vec<_>, Vec<_>) = self
             .layers
             .iter()
@@ -234,7 +279,7 @@ impl Network {
                  (idx, layer): (usize, &Layer)| {
                     let pass_kind = match error_state {
                         None => BackwardKind::Output {
-                            current_activation: &activations[idx],
+                            current_activation: activations.last().expect("no output layer"),
                             target: &target,
                         },
                         Some(error) => BackwardKind::Hidden {
@@ -246,7 +291,7 @@ impl Network {
                     let (weights_gradient, bias_gradient, error) = layer
                         .backward()
                         .prev_activations(&activations[idx])
-                        .z_values(&z_values[idx])
+                        .z_values(&z_values[idx + 1])
                         .pass_data(pass_kind)
                         .call();
                     *error_state = Some(error);
@@ -262,9 +307,12 @@ impl Network {
     }
 
     fn compose_gradients(
-        d_weights: &[&[WeightGradient]],
-        d_biases: &[&[BiasGradient]],
+        d_weights: &[Vec<WeightGradient>],
+        d_biases: &[Vec<BiasGradient>],
     ) -> (Vec<WeightGradient>, Vec<BiasGradient>) {
+        let init_weights = |col: usize| WeightGradient(Array2::zeros(d_weights[0][col].0.dim()));
+        let init_bias = |col: usize| BiasGradient(Array1::zeros(d_biases[0][col].0.dim()));
+
         (0..d_weights[0].len())
             .map(|j| {
                 d_weights
@@ -272,8 +320,10 @@ impl Network {
                     .map(|row| &row[j])
                     .zip(d_biases.iter().map(|row| &row[j]))
                     .fold(
-                        (WeightGradient::default(), BiasGradient::default()),
+                        (init_weights(j), init_bias(j)),
                         |(weights, biases), (w, b)| {
+                            assert_eq!(weights.0.dim(), w.0.dim());
+                            assert_eq!(biases.0.dim(), b.0.dim());
                             (
                                 WeightGradient(weights.0 + &w.0),
                                 BiasGradient(biases.0 + &b.0),
@@ -288,6 +338,8 @@ impl Network {
         &self,
         (d_weights, d_biases): (Vec<WeightGradient>, Vec<BiasGradient>),
     ) -> Self {
+        assert_eq!(d_weights.len(), self.layers.len());
+        assert_eq!(d_biases.len(), self.layers.len());
         let new_layers: Vec<_> = self
             .layers
             .par_iter()
@@ -297,9 +349,13 @@ impl Network {
                     .rev()
                     .zip(d_biases.into_par_iter().rev()),
             )
-            .map(|(layer, (weights_gradient, bias_gradient))| Layer {
-                weights: &layer.weights - weights_gradient.0,
-                bias: &layer.bias - bias_gradient.0,
+            .map(|(layer, (weights_gradient, bias_gradient))| {
+                assert_eq!(layer.weights.dim(), weights_gradient.0.dim());
+                assert_eq!(layer.bias.dim(), bias_gradient.0.dim());
+                Layer {
+                    weights: &layer.weights - weights_gradient.0,
+                    bias: &layer.bias - bias_gradient.0,
+                }
             })
             .collect();
         Network { layers: new_layers }
@@ -342,31 +398,45 @@ impl Network {
             );
             let images = shuffled.chunks(chunk_size);
             // chunk loop
-            let state = images.fold(state, |chunk_state, chunk| {
-                // image loop
-                let res = chunk
-                    .into_par_iter()
-                    .map(|(image, label)| {
-                        let target = Activations(Array1::from_shape_fn(10, |i| match i {
-                            i if i == *label as usize => 1.0,
-                            _ => 0.0,
-                        }));
-                        let image: Array1<f32> = image.into();
-                        let res = chunk_state
-                            .backprop()
-                            .target(target)
-                            .input(Activations(image))
-                            .learning_rate(learning_rate)
-                            .call();
-                        res
-                        //state.gradient_descent((d_weights, d_bias))
-                    })
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .fold(chunk_state.clone(), |state, a| state.gradient_descent(a));
-                chunk_span.pb_inc(1);
-                res
-            });
+            let state = images
+                .enumerate()
+                .fold(state, |chunk_state, (chunk_idx, chunk)| {
+                    // image loop
+                    let res: (Vec<_>, Vec<_>) = chunk
+                        .into_par_iter()
+                        .map(|(image, label)| {
+                            let target = Activations(Array1::from_shape_fn(10, |i| match i {
+                                i if i == *label as usize => 1.0,
+                                _ => 0.0,
+                            }));
+                            let image: Array1<f32> = image.into();
+                            let res = chunk_state
+                                .backprop()
+                                .target(target)
+                                .input(Activations(image))
+                                .learning_rate(learning_rate)
+                                .call();
+                            res
+                            //state.gradient_descent((d_weights, d_bias))
+                        })
+                        .unzip();
+                    let res = Self::compose_gradients(&res.0, &res.1);
+                    if chunk_idx == 0 {
+                        match ImageLogger::log_many(
+                            res.0.clone(),
+                            "weights",
+                            format!("./charts/chunk_{chunk_idx}"),
+                        ) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::error!("Failed to log images: {}", e);
+                            }
+                        }
+                    };
+                    let res = chunk_state.gradient_descent(res);
+                    chunk_span.pb_inc(1);
+                    res
+                });
             epoch_span.pb_inc(1);
             state
         })
@@ -417,5 +487,11 @@ impl Debug for Network {
             "Network {{ weights: {:#?}, bias: {:#?} }}",
             weights, bias
         )
+    }
+}
+
+impl IntoHeatmapSeries for WeightGradient {
+    fn into_series(self, label: impl Into<String>) -> impl Into<Series> {
+        self.0.into_series(label)
     }
 }
