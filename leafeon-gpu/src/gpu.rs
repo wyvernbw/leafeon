@@ -10,9 +10,13 @@ pub struct State {
     pub device: Device,
     pub queue: Queue,
     pub multiply_shader: wgpu::ShaderModule,
+    pub outer_product_shader: wgpu::ShaderModule,
 }
 
 impl State {
+    pub fn try_new_sync() -> anyhow::Result<Self> {
+        smol::block_on(Self::try_new())
+    }
     pub async fn try_new() -> anyhow::Result<Self> {
         let instance = Instance::new(InstanceDescriptor {
             backends: Backends::all(),
@@ -39,10 +43,14 @@ impl State {
                 None,
             )
             .await?;
-        let shader = wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into());
+        let shader = wgpu::ShaderSource::Wgsl(include_str!("./ops/mult.wgsl").into());
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("Matrix Multiplication Shader"),
             source: shader,
+        });
+        let outer_product_shader = device.create_shader_module(ShaderModuleDescriptor {
+            label: Some("Outer Product Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("./ops/outer-product.wgsl").into()),
         });
         Ok(Self {
             instance,
@@ -50,6 +58,7 @@ impl State {
             device,
             queue,
             multiply_shader: shader,
+            outer_product_shader,
         })
     }
 }

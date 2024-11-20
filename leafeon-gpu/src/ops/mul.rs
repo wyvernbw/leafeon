@@ -19,21 +19,13 @@ use wgpu::{
 
 use crate::gpu::State;
 
-pub struct MatrixMult<'a> {
-    state: &'a State,
-}
-
 #[bon]
-impl<'a> MatrixMult<'a> {
-    pub fn new(state: &'a State) -> Self {
-        Self { state }
-    }
+impl State {
     #[builder]
     fn create_matrix_bind_group_layout(&self, idx: u32, len: &NonZero<u32>) -> BindGroupLayout {
         let label = format!("matrix_{idx}");
         let label = Some(label.as_str());
-        self.state
-            .device
+        self.device
             .create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label,
                 entries: &[BindGroupLayoutEntry {
@@ -50,11 +42,10 @@ impl<'a> MatrixMult<'a> {
     }
 
     #[builder]
-    fn create_matrix_buffer(&self, data: &[u8], idx: u32, usage: Option<BufferUsages>) -> Buffer {
-        let label = format!("matrix_{idx}");
+    pub fn create_buffer(&self, data: &[u8], idx: u32, usage: Option<BufferUsages>) -> Buffer {
+        let label = format!("buffer_{idx}");
         let label = Some(label.as_str());
-        self.state
-            .device
+        self.device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label,
                 contents: data,
@@ -69,8 +60,7 @@ impl<'a> MatrixMult<'a> {
         rhs_len: &NonZero<u32>,
         res_len: &NonZero<u32>,
     ) -> PipelineLayout {
-        self.state
-            .device
+        self.device
             .create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: Some("mmul"),
                 bind_group_layouts: &[
@@ -101,35 +91,31 @@ impl<'a> MatrixMult<'a> {
         let arr = arr.as_slice().context("lhs is not contiguous")?;
         let arr: &[u8] = bytemuck::cast_slice(arr);
         let arr_buffer = self
-            .create_matrix_buffer()
+            .create_buffer()
             .usage(BufferUsages::COPY_SRC | BufferUsages::STORAGE)
             .data(arr)
             .idx(0)
             .call();
         let arr_copy_buffer = self
-            .create_matrix_buffer()
+            .create_buffer()
             .data(arr)
             .idx(0)
             .usage(BufferUsages::COPY_DST | BufferUsages::MAP_READ)
             .call();
         let pipeline = self
-            .state
             .device
             .create_compute_pipeline(&ComputePipelineDescriptor {
                 label: Some("Test Read Pipeline"),
                 layout: None,
-                module: &self
-                    .state
-                    .device
-                    .create_shader_module(ShaderModuleDescriptor {
-                        label: Some("Test Read Shader"),
-                        source: wgpu::ShaderSource::Wgsl(include_str!("test.wgsl").into()),
-                    }),
+                module: &self.device.create_shader_module(ShaderModuleDescriptor {
+                    label: Some("Test Read Shader"),
+                    source: wgpu::ShaderSource::Wgsl(include_str!("test.wgsl").into()),
+                }),
                 entry_point: None,
                 compilation_options: Default::default(),
                 cache: None,
             });
-        let bind_group = self.state.device.create_bind_group(&BindGroupDescriptor {
+        let bind_group = self.device.create_bind_group(&BindGroupDescriptor {
             label: Some("mmul bind group"),
             layout: &pipeline.get_bind_group_layout(0),
             entries: &[BindGroupEntry {
@@ -141,7 +127,6 @@ impl<'a> MatrixMult<'a> {
         tracing::debug!("Finished creating bind group");
 
         let mut encoder = self
-            .state
             .device
             .create_command_encoder(&CommandEncoderDescriptor {
                 label: Some("mmul encoder"),
@@ -164,7 +149,7 @@ impl<'a> MatrixMult<'a> {
 
         let commands = encoder.finish();
         tracing::debug!(?commands, "Submitted commands");
-        self.state.queue.submit(Some(commands));
+        self.queue.submit(Some(commands));
 
         // Read the result from GPU
         let buffer_slice = arr_copy_buffer.slice(..);
@@ -174,7 +159,7 @@ impl<'a> MatrixMult<'a> {
             tx.send(data).unwrap();
         });
         tracing::debug!("Waiting for read...");
-        self.state.device.poll(wgpu::Maintain::Wait);
+        self.device.poll(wgpu::Maintain::Wait);
         rx.recv()??;
         let data = buffer_slice.get_mapped_range();
         let data = bytemuck::cast_slice::<_, f32>(&data);
@@ -211,23 +196,22 @@ impl<'a> MatrixMult<'a> {
         //let len = |arr: &[_]| u32::try_from(arr.len()).and_then(NonZeroU32::try_from);
         //let lhs_len = len(lhs)?;
         //let rhs_len = len(rhs)?;
-        let lhs_buffer = self.create_matrix_buffer().data(lhs).idx(0).call();
-        let rhs_buffer = self.create_matrix_buffer().data(rhs).idx(1).call();
+        let lhs_buffer = self.create_buffer().data(lhs).idx(0).call();
+        let rhs_buffer = self.create_buffer().data(rhs).idx(1).call();
         let res_slice = vec![0u8; res_len.get() as usize];
         let res_buffer_storage = self
-            .create_matrix_buffer()
+            .create_buffer()
             .data(res_slice.as_slice())
             .idx(2)
             .usage(BufferUsages::STORAGE | BufferUsages::COPY_SRC)
             .call();
         let res_buffer_copy = self
-            .create_matrix_buffer()
+            .create_buffer()
             .data(res_slice.as_slice())
             .idx(4)
             .usage(BufferUsages::COPY_DST | BufferUsages::MAP_READ)
             .call();
         let dims_buffer = self
-            .state
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("matrix_dims"),
@@ -235,18 +219,17 @@ impl<'a> MatrixMult<'a> {
                 usage: wgpu::BufferUsages::UNIFORM,
             });
         let pipeline = self
-            .state
             .device
             .create_compute_pipeline(&ComputePipelineDescriptor {
                 label: Some("Matrix Multiplication Pipeline"),
                 layout: None,
-                module: &self.state.multiply_shader,
+                module: &self.multiply_shader,
                 entry_point: None,
                 compilation_options: Default::default(),
                 cache: None,
             });
 
-        let bind_group = self.state.device.create_bind_group(&BindGroupDescriptor {
+        let bind_group = self.device.create_bind_group(&BindGroupDescriptor {
             label: Some("mmul bind group"),
             layout: &pipeline.get_bind_group_layout(0),
             entries: &[
@@ -272,7 +255,6 @@ impl<'a> MatrixMult<'a> {
         tracing::debug!("Finished creating bind group");
 
         let mut encoder = self
-            .state
             .device
             .create_command_encoder(&CommandEncoderDescriptor {
                 label: Some("mmul encoder"),
@@ -303,7 +285,7 @@ impl<'a> MatrixMult<'a> {
 
         let commands = encoder.finish();
         tracing::debug!(?commands, "Submitted commands");
-        self.state.queue.submit(Some(commands));
+        self.queue.submit(Some(commands));
 
         // Read the result from GPU
         let buffer_slice = res_buffer_copy.slice(..);
@@ -313,7 +295,7 @@ impl<'a> MatrixMult<'a> {
             tx.send(data).unwrap();
         });
         tracing::debug!("Waiting for read...");
-        self.state.device.poll(wgpu::Maintain::Wait);
+        self.device.poll(wgpu::Maintain::Wait);
         rx.recv()??;
         let data = buffer_slice.get_mapped_range();
         assert_eq!(data.len(), res_len.get() as usize);
@@ -327,7 +309,7 @@ impl<'a> MatrixMult<'a> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use std::{convert::identity, ops::Div};
 
     use pretty_assertions::{assert_eq, assert_ne};
@@ -337,8 +319,6 @@ mod tests {
     use rstest::{fixture, rstest};
 
     use crate::gpu::State;
-
-    use super::MatrixMult;
 
     #[fixture]
     #[once]
@@ -352,7 +332,6 @@ mod tests {
     fn start_test(_init: &()) -> anyhow::Result<()> {
         smol::block_on(async {
             let state = State::try_new().await?;
-            let _ = MatrixMult::new(&state);
             anyhow::Ok(())
         })?;
         Ok(())
@@ -380,8 +359,7 @@ mod tests {
         let a = array![[1.0f32, 2., 3.], [4., 5., 6.]];
         smol::block_on(async {
             let state = State::try_new().await?;
-            let mmult = MatrixMult::new(&state);
-            let new_arr = mmult.test_read(a.clone()).await?;
+            let new_arr = state.test_read(a.clone()).await?;
             assert_eq!(new_arr, a);
             Ok(())
         })
@@ -394,8 +372,7 @@ mod tests {
         let expected = a.dot(&b);
         smol::block_on(async {
             let state = State::try_new().await?;
-            let mmult = MatrixMult::new(&state);
-            let result = mmult.dot(a.view(), b.view()).await;
+            let result = state.dot(a.view(), b.view()).await;
             assert_eq!(result, expected);
             anyhow::Ok(())
         })
@@ -414,7 +391,7 @@ mod tests {
         (a, b, expected)
     }
 
-    fn equal_approx(a: ArrayView2<f32>, b: ArrayView2<f32>) -> bool {
+    pub fn equal_approx(a: ArrayView2<f32>, b: ArrayView2<f32>) -> bool {
         a.iter().zip(b.iter()).all(|(x, y)| x.div(y).abs() < 0.001)
     }
 
@@ -445,8 +422,7 @@ mod tests {
         smol::block_on(async {
             let (a, b, expected) = random_arrays;
             let state = State::try_new().await.unwrap();
-            let mmult = MatrixMult::new(&state);
-            let result = mmult.dot(a.view(), b.view()).await;
+            let result = state.dot(a.view(), b.view()).await;
             equal_approx(result.view(), expected.view());
         });
     }

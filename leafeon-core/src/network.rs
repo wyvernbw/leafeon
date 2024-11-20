@@ -3,6 +3,7 @@ use pretty_assertions::{assert_eq, assert_ne};
 
 use std::{cmp::Ordering, fmt::Debug, io::Write, path::PathBuf};
 
+use crate::default_progress_style_pink;
 use anyhow::Context;
 use bon::bon;
 use charming::series::Series;
@@ -14,8 +15,6 @@ use rayon::iter::{
 use serde::{Deserialize, Serialize};
 use std::ops::Mul;
 use tracing_indicatif::span_ext::IndicatifSpanExt;
-
-use crate::default_progress_style_pink;
 
 use super::image_logger::IntoHeatmapSeries;
 
@@ -79,6 +78,7 @@ impl Layer {
         let Activations(prev_activation) = prev_activation;
         assert_eq!(self.weights.dim().1, prev_activation.dim());
         let z = self.weights.dot(&prev_activation.view());
+        //let z = dot_col(self.weights.view(), prev_activation.view());
         assert!(!z.is_any_nan(), "NaN in z value calculation");
         assert_eq!(z.dim(), self.bias.dim());
         let z = z + &self.bias;

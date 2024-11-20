@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 leafeon-types = { workspace = true }
+leafeon-gpu = { workspace = true }
 anyhow = { workspace = true }
 bincode = "1.3.3"
 bon = "3.0.1"

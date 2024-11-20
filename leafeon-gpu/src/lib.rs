@@ -1,8 +1,10 @@
 extern crate blas_src;
 
+pub mod executor;
 pub mod gpu;
-#[path = "./matrix-mul.rs"]
-pub mod matrix_mul;
+pub mod ops;
+
+pub use executor::dot;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
