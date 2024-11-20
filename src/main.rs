@@ -2,11 +2,9 @@
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use digit_recognition_rs::{
-    default_progress_style,
-    model::network::{Activations, Network},
-    parser::{load_data, Dataset},
-};
+use leafeon_core::{default_progress_style, network::Network, parser::load_data};
+use leafeon_types::prelude::*;
+
 use inquire::{prompt_u32, Select, Text};
 use strum::{Display, EnumIter, IntoEnumIterator};
 use tracing_indicatif::IndicatifLayer;

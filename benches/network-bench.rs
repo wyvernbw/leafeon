@@ -1,8 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use digit_recognition_rs::{
-    model::network::{Activations, Network},
-    parser::load_data,
-};
+use leafeon_core::{network::Network, parser::load_data};
+use leafeon_types::prelude::*;
 use ndarray::Array1;
 use rand::seq::IteratorRandom;
 use std::hint::black_box;

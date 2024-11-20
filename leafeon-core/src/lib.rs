@@ -10,7 +10,9 @@ use indicatif::ProgressStyle;
 
 extern crate blas_src;
 
-pub mod model;
+#[path = "./image-logger.rs"]
+pub mod image_logger;
+pub mod network;
 pub mod parser;
 
 pub fn default_progress_style() -> ProgressStyle {
