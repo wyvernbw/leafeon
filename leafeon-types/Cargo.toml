@@ -3,7 +3,9 @@ name = "leafeon-types"
 version = "0.1.0"
 edition = "2021"
 
+
 [dependencies]
+leafeon-gpu = { workspace = true }
 anyhow = "1.0.93"
 bincode = "1.3.3"
 bon = "3.0.1"
@@ -17,7 +19,6 @@ derive_more = { version = "1.0.0", features = [
 	"mul_assign",
 ] }
 indicatif = "0.17.9"
-nalgebra = { version = "0.33.2", features = ["rand"] }
 ndarray = { workspace = true }
 #openblas-src = { version = "0.10", features = ["cblas", "system"] }
 nom = "*"
@@ -30,8 +31,10 @@ tracing-indicatif = "0.3.6"
 inquire = "0.7.5"
 clap = { version = "4.5.21", features = ["derive"] }
 strum = { version = "0.26.3", features = ["derive"] }
-charming = "0.4.0"
 pretty_assertions = "1.4.1"
+rstest = "0.23.0"
+wgpu = "23.0.0"
+bytemuck = "1.20.0"
 
 [target.aarch64-apple-darwin.dependencies]
 blas-src = { version = "0.10", default-features = false, features = [
@@ -39,6 +42,12 @@ blas-src = { version = "0.10", default-features = false, features = [
 ] }
 
 [target.x86_64-pc-windows-msvc.dependencies]
+blas-src = { version = "0.10", default-features = false, features = [
+	"openblas",
+] }
+openblas-src = { version = "0.10", features = ["cblas", "system"] }
+
+[target.x86_64-pc-windows-gnu.dependencies]
 blas-src = { version = "0.10", default-features = false, features = [
 	"openblas",
 ] }

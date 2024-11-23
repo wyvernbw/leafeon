@@ -1,3 +1,4 @@
+#![feature(once_cell_get_mut)]
 extern crate blas_src;
 
 pub mod executor;

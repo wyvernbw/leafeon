@@ -22,7 +22,7 @@ use crate::gpu::State;
 #[bon]
 impl State {
     #[builder]
-    fn create_matrix_bind_group_layout(&self, idx: u32, len: &NonZero<u32>) -> BindGroupLayout {
+    pub fn create_matrix_bind_group_layout(&self, idx: u32, len: &NonZero<u32>) -> BindGroupLayout {
         let label = format!("matrix_{idx}");
         let label = Some(label.as_str());
         self.device
@@ -272,7 +272,7 @@ impl State {
         let dispatch_x = n.div_ceil(WORKGROUP_SIZE);
         let dispatch_y = p.div_ceil(WORKGROUP_SIZE);
 
-        compute_pass.dispatch_workgroups(1, 1, 1);
+        compute_pass.dispatch_workgroups(dispatch_x, dispatch_y, 1);
         drop(compute_pass);
 
         encoder.copy_buffer_to_buffer(

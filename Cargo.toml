@@ -26,6 +26,7 @@ ndarray = { workspace = true }
 bon = { workspace = true }
 nom = { workspace = true }
 rand = { workspace = true }
+rstest = "0.23.0"
 
 [workspace.dependencies]
 base64 = "0.22.1"

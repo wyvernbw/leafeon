@@ -1,12 +1,17 @@
-use std::{cell::OnceCell, ops::Mul, sync::OnceLock};
+use std::{
+    cell::OnceCell,
+    ops::{Deref, Mul},
+    sync::{Arc, Mutex, OnceLock},
+};
 
 use bytemuck::Pod;
 use ndarray::{Array2, ArrayView1, ArrayView2};
 
 use crate::gpu::State;
 
-struct Executor {
-    state: State,
+#[derive(Debug)]
+pub struct Executor {
+    pub state: State,
 }
 
 impl Executor {
@@ -16,10 +21,10 @@ impl Executor {
     }
 }
 
-static EXECUTOR: OnceLock<Executor> = OnceLock::new();
+static EXECUTOR: OnceLock<Mutex<Executor>> = OnceLock::new();
 
-fn executor() -> &'static Executor {
-    EXECUTOR.get_or_init(Executor::new)
+pub fn executor() -> &'static Mutex<Executor> {
+    EXECUTOR.get_or_init(|| Mutex::new(Executor::new()))
 }
 
 pub fn dot(
@@ -30,5 +35,10 @@ pub fn dot(
 }
 
 pub fn outer_dot_1<T: Mul + Pod>(a: ArrayView1<'_, T>, b: ArrayView1<'_, T>) -> Array2<T> {
-    executor().state.try_outer_dot_1(a, b).unwrap()
+    executor()
+        .lock()
+        .unwrap()
+        .state
+        .try_outer_dot_1(a, b)
+        .unwrap()
 }
