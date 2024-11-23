@@ -18,7 +18,17 @@ bon = { workspace = true }
 bytemuck = { version = "1.20.0", features = ["derive"] }
 pretty_assertions = { workspace = true }
 rstest = "0.23.0"
-blas-src = { workspace = true }
+
+[target.aarch64-apple-darwin.dependencies]
+blas-src = { version = "0.10", default-features = false, features = [
+	"accelerate",
+] }
+
+[target.x86_64-pc-windows-msvc.dependencies]
+blas-src = { version = "0.10", default-features = false, features = [
+	"openblas",
+] }
+openblas-src = { version = "0.10", features = ["cblas", "system"] }
 
 [dev-dependencies]
 rand = { workspace = true }

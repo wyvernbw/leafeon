@@ -51,9 +51,7 @@ ndarray = { version = "0.16.1", features = [
 	"serde",
 	"blas",
 ] }
-blas-src = { version = "0.10", default-features = false, features = [
-	"accelerate",
-] }
+
 #openblas-src = { version = "0.10", features = ["cblas", "system"] }
 nom = "*"
 rand = "0.8.5"
@@ -64,6 +62,17 @@ tracing-subscriber = "0.3.18"
 tracing-indicatif = "0.3.6"
 charming = "0.4.0"
 pretty_assertions = "1.4.1"
+
+[target.aarch64-apple-darwin.dependencies]
+blas-src = { version = "0.10", default-features = false, features = [
+	"accelerate",
+] }
+
+[target.x86_64-pc-windows-msvc.dependencies]
+blas-src = { version = "0.10", default-features = false, features = [
+	"openblas",
+] }
+openblas-src = { version = "0.10", features = ["cblas", "system"] }
 
 [dev-dependencies]
 criterion = "0.5.1"

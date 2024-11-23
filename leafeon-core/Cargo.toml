@@ -19,14 +19,7 @@ derive_more = { version = "1.0.0", features = [
 	"mul_assign",
 ] }
 indicatif = "0.17.9"
-ndarray = { version = "0.16.1", features = [
-	"matrixmultiply-threading",
-	"serde",
-	"blas",
-] }
-blas-src = { version = "0.10", default-features = false, features = [
-	"accelerate",
-] }
+ndarray = { workspace = true }
 #openblas-src = { version = "0.10", features = ["cblas", "system"] }
 nom = "*"
 rand = "0.8.5"
@@ -40,3 +33,14 @@ tracing-indicatif = "0.3.6"
 #strum = { version = "0.26.3", features = ["derive"] }
 charming = "0.4.0"
 pretty_assertions = "1.4.1"
+
+[target.aarch64-apple-darwin.dependencies]
+blas-src = { version = "0.10", default-features = false, features = [
+	"accelerate",
+] }
+
+[target.x86_64-pc-windows-msvc.dependencies]
+blas-src = { version = "0.10", default-features = false, features = [
+	"openblas",
+] }
+openblas-src = { version = "0.10", features = ["cblas", "system"] }
