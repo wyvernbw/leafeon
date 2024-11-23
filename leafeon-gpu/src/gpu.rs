@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use anyhow::Context;
 use bon::{bon, builder};
 use bytemuck::Pod;
@@ -164,6 +166,7 @@ impl State {
         let dispatch_y = dims.1.div_ceil(WORKGROUP_SIZE);
         let dispatch_z = dims.2.div_ceil(WORKGROUP_SIZE);
 
+        tracing::info!("dispatching {:?}", (dispatch_x, dispatch_y, dispatch_z));
         compute_pass.dispatch_workgroups(dispatch_x, dispatch_y, dispatch_z);
         drop(compute_pass);
 
@@ -181,7 +184,7 @@ impl State {
         dims: D::Pattern,
     ) -> ArrayBase<S, D>
     where
-        S::Elem: Pod,
+        S::Elem: Pod + Debug,
     {
         let buffer_slice = read_buffer.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
@@ -191,9 +194,11 @@ impl State {
         });
         tracing::debug!("Waiting for read...");
         self.device.poll(wgpu::Maintain::Wait);
-        let _ = rx.recv();
+        rx.recv().unwrap().unwrap();
         let data = buffer_slice.get_mapped_range();
-        let data = bytemuck::cast_slice::<_, S::Elem>(&data);
+        let byte_count = data.len();
+        let data = bytemuck::cast_slice::<u8, S::Elem>(&data);
+        assert_eq!(std::mem::size_of_val(data), byte_count);
 
         ArrayBase::<S, D>::from_shape_vec(dims, data.to_vec()).unwrap()
     }
