@@ -1,15 +1,18 @@
-use std::fmt::Debug;
+use std::{borrow::Cow, fmt::Debug, marker::PhantomData, path::PathBuf};
 
 use anyhow::Context;
 use bon::{bon, builder};
 use bytemuck::Pod;
 use ndarray::{ArrayBase, DataOwned, Dimension, RawData};
+use serde::Deserialize;
 use wgpu::{
-    core::pipeline, util::DeviceExt, Adapter, Backends, BindGroup, BindGroupDescriptor,
-    BindGroupEntry, CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline,
-    ComputePipelineDescriptor, Device, DeviceDescriptor, Instance, InstanceDescriptor, Limits,
-    PowerPreference, Queue, RequestAdapterOptions, ShaderModuleDescriptor,
+    util::DeviceExt, Adapter, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry,
+    CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor,
+    Device, DeviceDescriptor, Instance, InstanceDescriptor, Limits, PowerPreference, Queue,
+    RequestAdapterOptions, ShaderModuleDescriptor, ShaderModuleDescriptorSpirV,
 };
+
+use crate::MMUL;
 
 #[derive(Debug)]
 pub struct State {
@@ -17,20 +20,74 @@ pub struct State {
     pub adapter: Adapter,
     pub device: Device,
     pub queue: Queue,
-    pub multiply_shader: wgpu::ShaderModule,
     pub outer_product_shader: wgpu::ShaderModule,
-    pub mmul_pipeline: wgpu::ComputePipeline,
+    pub pipelines: Pipelines,
+}
+
+#[derive(Debug)]
+pub struct Pipelines {
+    pub mmul: MMulPipelines,
+}
+
+#[derive(Debug)]
+pub struct MMulPipelines {
+    pub shader: wgpu::ShaderModule,
+    pub mmul_i32: ComputePipeline,
+    pub mmul_f32: ComputePipeline,
+    pub mmul_f64: ComputePipeline,
+}
+
+impl MMulPipelines {
+    pub fn new(device: &Device) -> Self {
+        let shader = unsafe {
+            device.create_shader_module_spirv(&ShaderModuleDescriptorSpirV {
+                label: Some("mmul_shader"),
+                source: Cow::Borrowed(bytemuck::cast_slice(MMUL)),
+            })
+        };
+        let create_pipeline = |name: &str| {
+            device.create_compute_pipeline(&ComputePipelineDescriptor {
+                label: Some(name),
+                layout: None,
+                module: &shader,
+                entry_point: Some(name),
+                compilation_options: Default::default(),
+                cache: None,
+            })
+        };
+        let mmul_i32 = create_pipeline("mmul_i32");
+        let mmul_f32 = create_pipeline("mmul_f32");
+        let mmul_f64 = create_pipeline("mmul_f64");
+        Self {
+            shader,
+            mmul_i32,
+            mmul_f32,
+            mmul_f64,
+        }
+    }
+}
+
+pub trait SupportedPipeline: Debug {
+    fn get<'a>(&self, state: &'a State) -> (&'a ComputePipeline, &'a wgpu::ShaderModule);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PipelineSelector {
-    MMul,
+pub enum PipelineSelector<T> {
+    MMul(PhantomData<T>),
 }
 
-impl PipelineSelector {
-    pub fn get<'a>(&self, state: &'a State) -> (&'a ComputePipeline, &'a wgpu::ShaderModule) {
+impl<T> PipelineSelector<T> {
+    pub fn mmul() -> Self {
+        PipelineSelector::MMul(PhantomData)
+    }
+}
+
+impl SupportedPipeline for PipelineSelector<i32> {
+    fn get<'a>(&self, state: &'a State) -> (&'a ComputePipeline, &'a wgpu::ShaderModule) {
         match self {
-            PipelineSelector::MMul => (&state.mmul_pipeline, &state.multiply_shader),
+            PipelineSelector::MMul(_) => {
+                (&state.pipelines.mmul.mmul_i32, &state.pipelines.mmul.shader)
+            }
         }
     }
 }
@@ -88,15 +145,14 @@ impl State {
             adapter,
             device,
             queue,
-            multiply_shader: mmul_shader,
             outer_product_shader,
-            mmul_pipeline,
+            pipelines: todo!(),
         })
     }
     #[builder]
-    pub fn create_binary_op_bind_group(
+    pub fn create_binary_op_bind_group<P: SupportedPipeline>(
         &mut self,
-        pipeline_selector: &PipelineSelector,
+        pipeline_selector: &P,
         lhs_buffer: &wgpu::Buffer,
         rhs_buffer: &wgpu::Buffer,
         dims_buffer: &wgpu::Buffer,
@@ -135,9 +191,9 @@ impl State {
     }
 
     #[builder]
-    pub fn run_compute_pass(
+    pub fn run_compute_pass<P: SupportedPipeline>(
         &mut self,
-        selector: &PipelineSelector,
+        selector: &P,
         bind_group: &BindGroup,
         result_buffer_storage: &wgpu::Buffer,
         read_buffer: &wgpu::Buffer,

@@ -4,7 +4,26 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["leafeon-types", "leafeon-core", "leafeon-gpu", "leafeon-server"]
+members = [
+	"leafeon-types",
+	"leafeon-core",
+	"leafeon-gpu",
+	"leafeon-server",
+	"leafeon-shaders",
+	"leafeon-shaders/leafeon-mmul",
+]
+
+
+[profile.dev]
+codegen-units = 16 # Increase for faster compilation at the cost of runtime performance
+debug = 1          # Include line numbers but exclude variable details for faster builds
+incremental = true
+
+[profile.release.build-override]
+opt-level = 3
+codegen-units = 16
+[profile.dev.build-override]
+opt-level = 3
 
 [[bench]]
 name = "network-bench"
@@ -33,6 +52,7 @@ base64 = "0.22.1"
 leafeon-types = { path = "./leafeon-types" }
 leafeon-core = { path = "./leafeon-core" }
 leafeon-gpu = { path = "./leafeon-gpu" }
+leafeon-shaders = { path = "./leafeon-shaders" }
 anyhow = "1.0.93"
 bincode = "1.3.3"
 bon = "3.0.1"

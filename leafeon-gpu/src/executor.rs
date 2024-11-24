@@ -35,10 +35,11 @@ pub fn dot(
 }
 
 pub fn outer_dot_1<T: Mul + Pod>(a: ArrayView1<'_, T>, b: ArrayView1<'_, T>) -> Array2<T> {
-    executor()
-        .lock()
-        .unwrap()
-        .state
-        .try_outer_dot_1(a, b)
-        .unwrap()
+    todo!();
+    // executor()
+    //     .lock()
+    //     .unwrap()
+    //     .state
+    //     .try_outer_dot_1(a, b)
+    //     .unwrap()
 }

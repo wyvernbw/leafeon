@@ -1,12 +1,16 @@
 use std::{
     fmt::Debug,
+    marker::PhantomData,
     num::NonZero,
     ops::DerefMut,
     sync::{Arc, Mutex},
 };
 
 use bytemuck::Pod;
-use leafeon_gpu::executor::{self, executor, Executor};
+use leafeon_gpu::{
+    executor::{self, executor, Executor},
+    gpu::{PipelineSelector, SupportedPipeline},
+};
 use ndarray::{linalg::Dot, ArrayBase, ArrayView, Data, Dim, Dimension, RawData};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
@@ -129,6 +133,8 @@ where
     <S as RawData>::Elem: Pod + Debug,
     D: Dimension<Pattern = (usize, usize)>,
     ArrayBase<S, D>: Dot<ArrayBase<S, D>>,
+    // womp womp
+    PipelineSelector<<S as RawData>::Elem>: SupportedPipeline,
 {
     type Output = Array<ArrayBase<S, D>, GpuOps>;
 
@@ -170,7 +176,7 @@ where
         tracing::info!(lhs = ?self.data.dim(), rhs = ?rhs.data.dim(), results = ?result_dims);
         let (bindings, res_buffer_storage) = state
             .create_binary_op_bind_group()
-            .pipeline_selector(&leafeon_gpu::gpu::PipelineSelector::MMul)
+            .pipeline_selector(&PipelineSelector::<S::Elem>::mmul())
             .lhs_buffer(lhs_ops.storage_buffer.as_ref().unwrap())
             .rhs_buffer(rhs_ops.storage_buffer.as_ref().unwrap())
             .dims_buffer(&dimensions_buffer)
@@ -179,7 +185,7 @@ where
         state
             .run_compute_pass()
             .bind_group(&bindings)
-            .selector(&leafeon_gpu::gpu::PipelineSelector::MMul)
+            .selector(&PipelineSelector::<S::Elem>::mmul())
             .read_buffer(lhs_ops.read_buffer.as_ref().unwrap())
             .result_buffer_storage(&res_buffer_storage)
             .result_len(result_len as u64)

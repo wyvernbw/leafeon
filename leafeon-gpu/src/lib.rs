@@ -1,9 +1,10 @@
-#![feature(once_cell_get_mut)]
 extern crate blas_src;
 
 pub mod executor;
 pub mod gpu;
-pub mod ops;
+
+pub const MMUL: &[u8] =
+    include_bytes!("../../target/spirv-builder/spirv-unknown-spv1.5/release/deps/leafeon_mmul.spv");
 
 pub use executor::dot;
 

@@ -1,0 +1,19 @@
+[package]
+name = "leafeon-shaders"
+version = "0.1.0"
+edition = "2021"
+
+
+[build-dependencies]
+spirv-builder = { git = "https://github.com/Rust-GPU/rust-gpu" }
+
+# Compile build-dependencies in release mode with
+# the same settings as regular dependencies.
+
+[profile.release.build-override]
+opt-level = 3
+codegen-units = 16
+[profile.dev.build-override]
+opt-level = 3
+
+[dependencies]
