@@ -93,7 +93,7 @@ impl GpuOpsInner {
     fn prepare_storage_buffer<T: Pod, D: Dimension>(&mut self, array: ArrayView<'_, T, D>) {
         let data = array.as_slice().unwrap();
         let data = bytemuck::cast_slice(data);
-        let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
+        let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST;
         let buffer = self
             .executor
             .lock()
@@ -167,6 +167,7 @@ where
             self.data.dim().0 as u32,
             self.data.dim().1 as u32,
             rhs.data.dim().1 as u32,
+            0u32,
         ];
         let dimensions_buffer = state.device.create_buffer_init(&BufferInitDescriptor {
             label: Some("mmul_buffers_matrix_dims"),
@@ -233,7 +234,7 @@ pub mod tests {
     #[case(array![[1]], array![[1]])] // Single-element (1x1) matrices
     #[case(array![[-1, -2, -3], [-4, -5, -6]], array![[1, 2, 3], [4, 5, 6], [7, 8, 9]])] // Negative values in 'a'
     #[case(array![[1, 2, 3], [4, 5, 6]], array![[-4, -5], [-6, -7], [-8, -9]])] // Negative values in 'b'
-    fn test_dot_2(
+    fn test_dot_2_i32(
         #[case] a: impl Into<Array2<i32, GpuOps>>,
         #[case] b: impl Into<Array2<i32, GpuOps>>,
         _init: (),
@@ -243,6 +244,25 @@ pub mod tests {
         let expected = a.data.dot(&b.data);
         let result = a.dot(&b);
         assert_eq!(result.data, expected);
+    }
+
+    #[rstest]
+    #[case(array![[1, 2, 3], [4, 5, 6], [7, 8, 9]], array![[1, 2, 3], [4, 5, 6], [7, 8, 9]])]
+    fn test_dot_2_repeated(
+        #[case] a: impl Into<Array2<i32, GpuOps>>,
+        #[case] b: impl Into<Array2<i32, GpuOps>>,
+        _init: (),
+    ) {
+        let mut a = a.into();
+        let b = b.into();
+        let mut expected = a.data.clone();
+        for _ in 0..5 {
+            expected = expected.dot(&b.data);
+        }
+        for _ in 0..5 {
+            a = a.dot(&b);
+        }
+        assert_eq!(a.data, expected);
     }
 
     #[rstest]

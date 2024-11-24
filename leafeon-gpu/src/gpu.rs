@@ -34,17 +34,15 @@ pub struct MMulPipelines {
     pub shader: wgpu::ShaderModule,
     pub mmul_i32: ComputePipeline,
     pub mmul_f32: ComputePipeline,
-    pub mmul_f64: ComputePipeline,
 }
 
 impl MMulPipelines {
     pub fn new(device: &Device) -> Self {
-        let shader = unsafe {
-            device.create_shader_module_spirv(&ShaderModuleDescriptorSpirV {
-                label: Some("mmul_shader"),
-                source: Cow::Borrowed(bytemuck::cast_slice(MMUL)),
-            })
-        };
+        let mmul = bytemuck::cast_slice(MMUL);
+        let shader = device.create_shader_module(ShaderModuleDescriptor {
+            label: Some("mmul_shader"),
+            source: wgpu::ShaderSource::SpirV(Cow::Borrowed(mmul)),
+        });
         let create_pipeline = |name: &str| {
             device.create_compute_pipeline(&ComputePipelineDescriptor {
                 label: Some(name),
@@ -57,12 +55,10 @@ impl MMulPipelines {
         };
         let mmul_i32 = create_pipeline("mmul_i32");
         let mmul_f32 = create_pipeline("mmul_f32");
-        let mmul_f64 = create_pipeline("mmul_f64");
         Self {
             shader,
             mmul_i32,
             mmul_f32,
-            mmul_f64,
         }
     }
 }
@@ -87,6 +83,16 @@ impl SupportedPipeline for PipelineSelector<i32> {
         match self {
             PipelineSelector::MMul(_) => {
                 (&state.pipelines.mmul.mmul_i32, &state.pipelines.mmul.shader)
+            }
+        }
+    }
+}
+
+impl SupportedPipeline for PipelineSelector<f32> {
+    fn get<'a>(&self, state: &'a State) -> (&'a ComputePipeline, &'a wgpu::ShaderModule) {
+        match self {
+            PipelineSelector::MMul(_) => {
+                (&state.pipelines.mmul.mmul_f32, &state.pipelines.mmul.shader)
             }
         }
     }
@@ -140,13 +146,17 @@ impl State {
             compilation_options: Default::default(),
             cache: None,
         });
+        let pipelines = Pipelines {
+            mmul: MMulPipelines::new(&device),
+        };
+
         Ok(Self {
             instance,
             adapter,
             device,
             queue,
             outer_product_shader,
-            pipelines: todo!(),
+            pipelines,
         })
     }
     #[builder]

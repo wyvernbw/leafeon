@@ -1,7 +1,7 @@
 #![feature(associated_type_defaults)]
 use std::{fmt::Display, iter::Sum};
 
-extern crate openblas_src;
+extern crate blas_src;
 
 use derive_more::derive::{Add, AsRef, Index, IndexMut, Mul as DeriveMoreMul, MulAssign, Sub};
 use ndarray::prelude::*;

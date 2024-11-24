@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 cfg-if = "1"
-wgpu = "23.0.0"
+wgpu = { version = "23.0.0", features = ["spirv"] }
 leafeon-shaders = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
