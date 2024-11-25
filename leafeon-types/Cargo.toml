@@ -41,6 +41,7 @@ bytemuck = "1.20.0"
 
 [dev-dependencies]
 criterion = "0.5.1"
+tracing-subscriber = { workspace = true }
 
 [target.aarch64-apple-darwin.dependencies]
 blas-src = { version = "0.10", default-features = false, features = [

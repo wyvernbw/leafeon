@@ -38,10 +38,10 @@ pub struct MMulPipelines {
 
 impl MMulPipelines {
     pub fn new(device: &Device) -> Self {
-        let mmul = bytemuck::cast_slice(MMUL);
+        let mmul = wgpu::util::make_spirv(MMUL);
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("mmul_shader"),
-            source: wgpu::ShaderSource::SpirV(Cow::Borrowed(mmul)),
+            source: mmul,
         });
         let create_pipeline = |name: &str| {
             device.create_compute_pipeline(&ComputePipelineDescriptor {

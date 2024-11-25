@@ -2,9 +2,11 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use leafeon_types::prelude::{BaseOps, GpuOps};
 use ndarray::linalg::Dot;
 
+const N: usize = 4096;
+
 fn dot_2_cpu(c: &mut Criterion) {
-    let array_a = ndarray::Array2::<f32>::from_shape_fn((3, 3), |_| rand::random::<f32>());
-    let array_b = ndarray::Array2::<f32>::from_shape_fn((3, 3), |_| rand::random::<f32>());
+    let array_a = ndarray::Array2::<f32>::from_shape_fn((N, N), |_| rand::random::<f32>());
+    let array_b = ndarray::Array2::<f32>::from_shape_fn((N, N), |_| rand::random::<f32>());
     let array_a =
         leafeon_types::array::Array2::<_, leafeon_types::array::base_ops::BaseOps>::from(array_a);
     let array_b =
@@ -18,8 +20,9 @@ fn dot_2_cpu(c: &mut Criterion) {
 }
 
 fn dot_2_gpu(c: &mut Criterion) {
-    let array_a = ndarray::Array2::<f32>::from_shape_fn((3, 3), |_| rand::random::<f32>());
-    let array_b = ndarray::Array2::<f32>::from_shape_fn((3, 3), |_| rand::random::<f32>());
+    tracing_subscriber::fmt::init();
+    let array_a = ndarray::Array2::<f32>::from_shape_fn((N, N), |_| rand::random::<f32>());
+    let array_b = ndarray::Array2::<f32>::from_shape_fn((N, N), |_| rand::random::<f32>());
     let array_a =
         leafeon_types::array::Array2::<_, leafeon_types::array::gpu_ops::GpuOps>::from(array_a);
     let array_b =
