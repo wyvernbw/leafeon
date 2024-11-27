@@ -6,8 +6,7 @@ use std::{cmp::Ordering, fmt::Debug, io::Write, path::PathBuf};
 use crate::default_progress_style_pink;
 use anyhow::Context;
 use bon::bon;
-use charming::series::Series;
-use ndarray::prelude::*;
+use ndarray::prelude::{Array1 as NDArray1, Array2 as NDArray2, ArrayView1 as NDArrayView1};
 use rand::{random, seq::IteratorRandom};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -21,29 +20,41 @@ use super::image_logger::IntoHeatmapSeries;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Layer {
     /// (n_out, n_in)
-    pub weights: Array2<f32>,
-    pub bias: Array1<f32>,
+    pub weights: Array2<f32, BaseOps>,
+    pub bias: Array1<f32, BaseOps>,
 }
 
 const EPSILON: f32 = 0.1;
 
 pub fn relu(x: ArrayView1<f32>) -> Array1<f32> {
-    x.map(|x| if *x <= 0.0 { EPSILON * x } else { *x })
+    x.as_ref()
+        .map(|x| if *x <= 0.0 { EPSILON * x } else { *x })
+        .into()
 }
 
 pub fn relu_derivative(x: ArrayView1<f32>) -> Array1<f32> {
-    x.map(|x| if *x > 0.0 { 1.0 } else { EPSILON })
+    x.as_ref()
+        .map(|x| if *x > 0.0 { 1.0 } else { EPSILON })
+        .into()
 }
 
 pub fn softmax(logits: ArrayView1<f32>) -> Array1<f32> {
-    assert_eq!(logits.is_any_infinite(), false, "got inf in softmax input");
-    assert_eq!(logits.is_any_nan(), false, "got nan in softmax input");
-    let max_logit = logits.fold(f32::NEG_INFINITY, |a, &b| a.max(b)); // Find max logit
-    let exp_logits = logits.map(|x| (x - max_logit).exp()); // Apply exp to each logit
+    assert_eq!(
+        logits.as_ref().is_any_infinite(),
+        false,
+        "got inf in softmax input"
+    );
+    assert_eq!(
+        logits.as_ref().is_any_nan(),
+        false,
+        "got nan in softmax input"
+    );
+    let max_logit = logits.as_ref().fold(f32::NEG_INFINITY, |a, &b| a.max(b)); // Find max logit
+    let exp_logits = logits.as_ref().map(|x| (x - max_logit).exp()); // Apply exp to each logit
     assert_eq!(exp_logits.is_any_infinite(), false, "overflow after exp");
     let sum_exp_logits = exp_logits.sum(); // Sum of exponentials
     assert_ne!(sum_exp_logits, 0.0, "sum_exp_logits is 0, division by 0");
-    exp_logits.map(|x| x / sum_exp_logits) // Normalize by the sum to get probabilities
+    exp_logits.map(|x| x / sum_exp_logits).into() // Normalize by the sum to get probabilities
 }
 
 pub enum BackwardKind<'a> {
@@ -69,22 +80,22 @@ impl Debug for BackwardKind<'_> {
 #[bon]
 impl Layer {
     pub fn new(weights: Array2<f32>, bias: Array1<f32>) -> Self {
-        assert_eq!(weights.dim().1, bias.len());
+        assert_eq!(weights.as_ref().dim().1, bias.as_ref().len());
         Self { weights, bias }
     }
     #[builder]
     pub fn forward(&self, prev_activation: &Activations) -> (ZValues, Activations) {
         assert!(!prev_activation.0.is_any_nan(), "NaN in prev activation");
         let Activations(prev_activation) = prev_activation;
-        assert_eq!(self.weights.dim().1, prev_activation.dim());
-        let z = self.weights.dot(&prev_activation.view());
+        assert_eq!(self.weights.as_ref().dim().1, prev_activation.dim());
+        let z = self.weights.as_ref().dot(&prev_activation.view());
         //let z = dot_col(self.weights.view(), prev_activation.view());
         assert!(!z.is_any_nan(), "NaN in z value calculation");
-        assert_eq!(z.dim(), self.bias.dim());
-        let z = z + &self.bias;
+        assert_eq!(z.dim(), self.bias.as_ref().dim());
+        let z = z + self.bias.as_ref();
         assert!(!z.is_any_nan(), "NaN in z value after bias addition");
-        let a = relu(z.view());
-        assert!(!a.is_any_nan(), "NaN in a value after relu");
+        let a = relu(z.view().into());
+        assert!(!a.as_ref().is_any_nan(), "NaN in a value after relu");
         (ZValues(z), Activations(a))
     }
     #[builder]

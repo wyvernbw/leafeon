@@ -12,6 +12,7 @@ use leafeon_gpu::{
     gpu::{PipelineSelector, SupportedPipeline},
 };
 use ndarray::{linalg::Dot, ArrayBase, ArrayView, Data, Dim, Dimension, RawData};
+use serde::{Deserialize, Serialize};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
 use super::Array;
@@ -23,6 +24,26 @@ pub struct GpuOpsInner {
     pub(crate) storage_buffer: Option<Arc<wgpu::Buffer>>,
     pub(crate) read_buffer: Option<Arc<wgpu::Buffer>>,
     pub(crate) executor: &'static Mutex<Executor>,
+}
+
+#[cfg(feature = "serde")]
+impl Serialize for GpuOpsInner {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_none()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for GpuOpsInner {
+    fn deserialize<D>(_: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self::default())
+    }
 }
 
 impl Default for GpuOpsInner {
@@ -234,6 +255,7 @@ pub mod tests {
     #[case(array![[1]], array![[1]])] // Single-element (1x1) matrices
     #[case(array![[-1, -2, -3], [-4, -5, -6]], array![[1, 2, 3], [4, 5, 6], [7, 8, 9]])] // Negative values in 'a'
     #[case(array![[1, 2, 3], [4, 5, 6]], array![[-4, -5], [-6, -7], [-8, -9]])] // Negative values in 'b'
+    #[case(large_array(0), large_array(16))]
     fn test_dot_2_i32(
         #[case] a: impl Into<Array2<i32, GpuOps>>,
         #[case] b: impl Into<Array2<i32, GpuOps>>,
@@ -263,6 +285,10 @@ pub mod tests {
             a = a.dot(&b);
         }
         assert_eq!(a.data, expected);
+    }
+
+    fn large_array(offset: i32) -> Array2<i32, GpuOps> {
+        ndarray::Array2::from_shape_fn((256, 256), |(x, y)| x as i32 + y as i32 + offset).into()
     }
 
     #[rstest]

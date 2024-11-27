@@ -8,7 +8,6 @@ members = [
 	"leafeon-types",
 	"leafeon-core",
 	"leafeon-gpu",
-	"leafeon-server",
 	"leafeon-shaders",
 	"leafeon-shaders/leafeon-mmul",
 ]
@@ -21,7 +20,7 @@ debug = 1 # Include line numbers but exclude variable details for faster builds
 opt-level = 3
 codegen-units = 16
 [profile.dev.build-override]
-opt-level = 3
+opt-level = 0
 
 [[bench]]
 name = "network-bench"
@@ -30,7 +29,6 @@ harness = false
 [dependencies]
 leafeon-types = { workspace = true }
 leafeon-core = { workspace = true }
-leafeon-gpu = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
@@ -38,12 +36,8 @@ inquire = "0.7.5"
 clap = { version = "4.5.21", features = ["derive"] }
 strum = { version = "0.26.3", features = ["derive"] }
 tracing-indicatif = { workspace = true }
-indicatif = { workspace = true }
 ndarray = { workspace = true }
-bon = { workspace = true }
-nom = { workspace = true }
 rand = { workspace = true }
-rstest = "0.23.0"
 
 [workspace.dependencies]
 base64 = "0.22.1"
@@ -70,7 +64,6 @@ ndarray = { version = "0.16.1", features = [
 	"serde",
 	"blas",
 ] }
-
 #openblas-src = { version = "0.10", features = ["cblas", "system"] }
 nom = "*"
 rand = "0.8.5"
@@ -79,8 +72,8 @@ serde = { version = "1.0.215", features = ["derive"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 tracing-indicatif = "0.3.6"
-charming = "0.4.0"
 pretty_assertions = "1.4.1"
+rstest = "0.23.0"
 
 [target.aarch64-apple-darwin.dependencies]
 blas-src = { version = "0.10", default-features = false, features = [

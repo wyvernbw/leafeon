@@ -1,17 +1,48 @@
+#![feature(test)]
 #![feature(associated_type_defaults)]
-use std::{fmt::Display, iter::Sum};
+use ndarray::LinalgScalar;
+
+use crate::prelude::*;
+use std::{
+    fmt::Display,
+    iter::Sum,
+    ops::{Add, Mul, Sub},
+};
 
 extern crate blas_src;
 
-use derive_more::derive::{Add, AsRef, Index, IndexMut, Mul as DeriveMoreMul, MulAssign, Sub};
-use ndarray::prelude::*;
-
 pub mod array;
+pub mod benchmarks;
 pub mod dataset;
 pub mod prelude;
 
-#[derive(Debug, Clone, Default, DeriveMoreMul, MulAssign, Add, Sub)]
-pub struct WeightGradient(pub Array2<f32>);
+#[derive(Debug, Clone, Default)]
+pub struct WeightGradient<O = BaseOps>(pub Array2<f32, O>);
+
+impl Add for WeightGradient {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Sub for WeightGradient {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl<T: LinalgScalar> Mul<T> for WeightGradient {
+    type Output = Self;
+
+    fn mul(self, rhs: T) -> Self::Output {
+        todo!();
+        //Self(self.0 * rhs)
+    }
+}
 
 impl Sum for WeightGradient {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
@@ -19,8 +50,24 @@ impl Sum for WeightGradient {
     }
 }
 
-#[derive(Debug, Clone, Default, MulAssign, DeriveMoreMul, Add, Sub)]
-pub struct BiasGradient(pub Array1<f32>);
+#[derive(Debug, Clone, Default)]
+pub struct BiasGradient<O = BaseOps>(pub Array1<f32, O>);
+
+impl Add for BiasGradient {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Sub for BiasGradient {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self(self.0 - rhs.0)
+    }
+}
 
 impl Sum for BiasGradient {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
@@ -29,13 +76,13 @@ impl Sum for BiasGradient {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Loss(pub Array1<f32>);
+pub struct Loss<O = BaseOps>(pub Array1<f32, O>);
 
 #[derive(Debug, Clone, Default, Index, IndexMut)]
-pub struct ZValues(#[index] pub Array1<f32>);
+pub struct ZValues<O = BaseOps>(#[index] pub Array1<f32, O>);
 
 #[derive(Debug, Clone, Default, Index, IndexMut, Add, Sub, DeriveMoreMul, AsRef)]
-pub struct Activations(#[index] pub Array1<f32>);
+pub struct Activations<O = BaseOps>(#[index] pub Array1<f32, O>);
 
 impl Display for Activations {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

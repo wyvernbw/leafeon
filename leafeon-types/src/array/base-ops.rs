@@ -1,10 +1,12 @@
 use std::ops::{Add, Mul, Sub};
 
 use ndarray::linalg::Dot;
+use serde::{Deserialize, Serialize};
 
 use super::Array;
 
 #[derive(Default, Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct BaseOps;
 
 impl<A> Add<Array<A, BaseOps>> for Array<A, BaseOps>

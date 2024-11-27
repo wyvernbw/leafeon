@@ -12,14 +12,10 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 ndarray = { workspace = true }
-tracing-log = "0.2.0"
 smol = "2.0.2"
 bon = { workspace = true }
 bytemuck = { version = "1.20.0", features = ["derive"] }
-pretty_assertions = { workspace = true }
 serde = { workspace = true }
-rstest = "0.23.0"
-serde_json = "1.0.133"
 
 
 [target.aarch64-apple-darwin.dependencies]
