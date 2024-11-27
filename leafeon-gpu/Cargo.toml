@@ -21,12 +21,13 @@ serde = { workspace = true }
 rstest = "0.23.0"
 serde_json = "1.0.133"
 
+
 [target.aarch64-apple-darwin.dependencies]
 blas-src = { version = "0.10", default-features = false, features = [
 	"accelerate",
 ] }
 
-[target.x86_64-pc-windows-msvc.dependencies]
+[target.'cfg(target_os = "windows")'.dependencies]
 blas-src = { version = "0.10", default-features = false, features = [
 	"openblas",
 ] }

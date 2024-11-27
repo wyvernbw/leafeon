@@ -15,9 +15,7 @@ members = [
 
 
 [profile.dev]
-codegen-units = 16 # Increase for faster compilation at the cost of runtime performance
-debug = 1          # Include line numbers but exclude variable details for faster builds
-incremental = true
+debug = 1 # Include line numbers but exclude variable details for faster builds
 
 [profile.release.build-override]
 opt-level = 3

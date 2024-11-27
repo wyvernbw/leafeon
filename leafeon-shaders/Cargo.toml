@@ -5,7 +5,7 @@ edition = "2021"
 
 
 [build-dependencies]
-spirv-builder = { git = "https://github.com/Rust-GPU/rust-gpu" }
+spirv-builder = { git = "https://github.com/Rust-GPU/rust-gpu", commit = "8c2c494d59b165449398023932c9aeeeef02f959" }
 
 # Compile build-dependencies in release mode with
 # the same settings as regular dependencies.
