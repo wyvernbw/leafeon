@@ -6,6 +6,8 @@ use std::{
 use base_ops::BaseOps;
 use gpu_ops::GpuOps;
 use ndarray::{linalg::Dot, ArrayBase, Data, Dimension, RawData};
+
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 #[path = "base-ops.rs"]

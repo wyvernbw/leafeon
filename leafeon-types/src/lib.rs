@@ -1,5 +1,6 @@
 #![feature(test)]
 #![feature(associated_type_defaults)]
+use derive_more::derive::{Index, IndexMut};
 use ndarray::LinalgScalar;
 
 use crate::prelude::*;
@@ -81,7 +82,7 @@ pub struct Loss<O = BaseOps>(pub Array1<f32, O>);
 #[derive(Debug, Clone, Default, Index, IndexMut)]
 pub struct ZValues<O = BaseOps>(#[index] pub Array1<f32, O>);
 
-#[derive(Debug, Clone, Default, Index, IndexMut, Add, Sub, DeriveMoreMul, AsRef)]
+#[derive(Debug, Clone, Default, Index, IndexMut)]
 pub struct Activations<O = BaseOps>(#[index] pub Array1<f32, O>);
 
 impl Display for Activations {

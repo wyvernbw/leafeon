@@ -5,7 +5,10 @@ use core::cmp::Ordering;
 use core::ops::{Add, AddAssign, Mul};
 
 use num_traits::Zero;
-use spirv_std::arch::workgroup_memory_barrier_with_group_sync;
+use spirv_std::arch::{
+    all_memory_barrier_with_group_sync, workgroup_memory_barrier,
+    workgroup_memory_barrier_with_group_sync,
+};
 use spirv_std::glam::{UVec2, UVec3};
 use spirv_std::spirv;
 
@@ -31,29 +34,34 @@ pub fn mmul_tile<T: Zero + Mul<Output = T> + Add<Output = T> + Copy + AddAssign 
     let tx = local_idx.x as usize;
     let ty = local_idx.y as usize;
 
-    if global_idx.x < m && global_idx.y < n {
-        tile_a[ty][tx] = mat_a[(global_idx.y * m + global_idx.x) as usize];
-    } else {
-        tile_a[ty][tx] = T::zero();
-    }
-    if global_idx.x < p && global_idx.y < m {
-        tile_b[ty][tx] = mat_b[(global_idx.y * p + global_idx.x) as usize];
-    } else {
-        tile_b[ty][tx] = T::zero();
-    }
-
-    unsafe {
-        workgroup_memory_barrier_with_group_sync();
-    }
+    let tile_count = m.div_ceil(TILEU32);
 
     let mut value = T::zero();
-    for j in 0..TILE {
-        value += tile_a[ty][j] * tile_b[j][tx];
+    for t in 0..tile_count {
+        if global_idx.x < m && global_idx.y < n {
+            tile_a[ty][tx] = mat_a[(global_idx.y * m + local_idx.x + t * TILEU32) as usize];
+        } else {
+            tile_a[ty][tx] = T::zero();
+        }
+        if global_idx.x < p && global_idx.y < m {
+            tile_b[ty][tx] = mat_b[((local_idx.y + t * TILEU32) * p + global_idx.x) as usize];
+        } else {
+            tile_b[ty][tx] = T::zero();
+        }
+
+        unsafe {
+            all_memory_barrier_with_group_sync();
+        }
+
+        for j in 0..TILE {
+            value += tile_a[ty][j] * tile_b[j][tx];
+        }
+        unsafe {
+            all_memory_barrier_with_group_sync();
+        }
     }
-    unsafe {
-        workgroup_memory_barrier_with_group_sync();
-    }
-    if global_idx.x < p && global_idx.y < m {
+
+    if global_idx.x < p && global_idx.y < n {
         mat_c[(global_idx.y * p + global_idx.x) as usize] = value;
     }
 }
@@ -87,7 +95,6 @@ pub fn mmul<T: Zero + Mul<Output = T> + Add<Output = T> + Copy>(
 pub fn mmul_f32(
     #[spirv(local_invocation_id)] local_id: UVec3,
     #[spirv(global_invocation_id)] global_id: UVec3,
-    #[spirv(workgroup_id)] block_idx: UVec3,
     #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] mat_a: &mut [f32],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] mat_b: &mut [f32],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 2)] mat_c: &mut [f32],
@@ -111,10 +118,22 @@ pub fn mmul_f32(
 #[spirv(compute(threads(32, 32)))]
 pub fn mmul_i32(
     #[spirv(global_invocation_id)] global_id: UVec3,
+    #[spirv(local_invocation_id)] local_id: UVec3,
     #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] mat_a: &mut [i32],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] mat_b: &mut [i32],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 2)] mat_c: &mut [i32],
     #[spirv(uniform, descriptor_set = 0, binding = 3)] matrix_dims: &UVec3,
+    #[spirv(workgroup)] tile_a: &mut [[i32; TILE]; TILE],
+    #[spirv(workgroup)] tile_b: &mut [[i32; TILE]; TILE],
 ) {
-    mmul(global_id, mat_a, mat_b, mat_c, matrix_dims);
+    mmul_tile(
+        local_id,
+        global_id,
+        mat_a,
+        mat_b,
+        mat_c,
+        tile_a,
+        tile_b,
+        matrix_dims,
+    );
 }

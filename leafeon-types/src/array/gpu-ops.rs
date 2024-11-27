@@ -12,8 +12,10 @@ use leafeon_gpu::{
     gpu::{PipelineSelector, SupportedPipeline},
 };
 use ndarray::{linalg::Dot, ArrayBase, ArrayView, Data, Dim, Dimension, RawData};
-use serde::{Deserialize, Serialize};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 use super::Array;
 
@@ -265,7 +267,11 @@ pub mod tests {
         let b = b.into();
         let expected = a.data.dot(&b.data);
         let result = a.dot(&b);
-        assert_eq!(result.data, expected);
+        result
+            .as_ref()
+            .indexed_iter()
+            .zip(expected.indexed_iter())
+            .for_each(|(a, b)| assert_eq!(a, b));
     }
 
     #[rstest]
