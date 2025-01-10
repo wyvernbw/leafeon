@@ -2,7 +2,11 @@
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use leafeon_core::{default_progress_style, network::Network, parser::load_data};
+use leafeon_core::{
+    default_progress_style,
+    network::{Network, NoiseLayer, OffsetLayer, PreprocessingLayer, RotateLayer},
+    parser::load_data,
+};
 use leafeon_types::prelude::*;
 
 use inquire::{prompt_u32, Select, Text};
@@ -33,7 +37,7 @@ pub fn untrained() -> Network {
         .call()
 }
 
-pub fn train(network: Network, dataset: Dataset) -> Network {
+pub fn train<S: PreprocessingLayer>(network: Network<S>, dataset: Dataset) -> Network<S> {
     network
         .train()
         .dataset(dataset)
@@ -56,7 +60,11 @@ fn main() -> anyhow::Result<()> {
                 .labels_path("./data/train-labels-idx1-ubyte")
                 .data_path("./data/train-images-idx3-ubyte")
                 .call()?;
-            let network = untrained();
+            let preprocess = ();
+            let preprocess = RotateLayer::new(preprocess, std::f32::consts::PI * 0.1);
+            let preprocess = OffsetLayer::new(preprocess, 8.0);
+            let preprocess = NoiseLayer::new(preprocess, 0.3);
+            let network = untrained().with_preprocessing(preprocess);
             let network = train(network, dataset);
 
             tracing::info!("finished training");

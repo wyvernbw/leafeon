@@ -151,23 +151,150 @@ impl Layer {
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
-pub struct Network {
+pub struct Network<S = ()> {
     layers: Vec<Layer>,
+    #[serde(skip)]
+    preprocessing: Option<S>,
+}
+
+pub trait PreprocessingLayer: Send + Sync + Serialize + for<'a> Deserialize<'a> + Clone {
+    fn apply(&self, input: Activations) -> Activations;
+}
+
+impl PreprocessingLayer for () {
+    fn apply(&self, input: Activations) -> Activations {
+        input
+    }
+}
+
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct Trained;
+
+impl PreprocessingLayer for Trained {
+    fn apply(&self, input: Activations) -> Activations {
+        input
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoiseLayer<S> {
+    amplitude: f32,
+    inner: S,
+}
+
+impl<S> NoiseLayer<S> {
+    pub fn new(inner: S, amplitude: f32) -> Self {
+        Self { amplitude, inner }
+    }
+}
+
+impl<S: PreprocessingLayer> PreprocessingLayer for NoiseLayer<S> {
+    fn apply(&self, input: Activations) -> Activations {
+        let arr = self.inner.apply(input).0;
+        let arr = arr.map(|x| x + self.amplitude * random::<f32>());
+        Activations(arr)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RotateLayer<S> {
+    inner: S,
+    max_angle: f32,
+}
+
+impl<S> RotateLayer<S> {
+    pub fn new(inner: S, max_angle: f32) -> Self {
+        Self { inner, max_angle }
+    }
+}
+
+impl<S: PreprocessingLayer> PreprocessingLayer for RotateLayer<S> {
+    fn apply(&self, input: Activations) -> Activations {
+        let arr = self.inner.apply(input.clone()).0;
+        let size = (arr.len() as f32).sqrt() as usize;
+        let arr = match Array2::from_shape_vec((size, size), arr.to_vec()) {
+            Ok(arr) => arr,
+            Err(err) => {
+                tracing::error!("{}", err);
+                return input;
+            }
+        };
+        let angle = random::<f32>() * self.max_angle;
+        let rotation = array![[angle.cos(), angle.sin()], [-angle.sin(), angle.cos()]];
+        let mut rotated = Array2::default((size, size));
+        for i in 0..size {
+            for j in 0..size {
+                let rotated_idx = array![i as f32, j as f32].dot(&rotation);
+                let u = rotated_idx[0] as usize;
+                let v = rotated_idx[1] as usize;
+                if let (Some(a), Some(b)) = (rotated.get_mut((i, j)), arr.get((u, v))) {
+                    *a = *b;
+                }
+            }
+        }
+        let rotated = rotated.into_raw_vec_and_offset().0;
+        let rotated = Array1::from_shape_vec(rotated.len(), rotated);
+        match rotated {
+            Ok(rotated) => Activations(rotated),
+            Err(err) => {
+                tracing::error!("{}", err);
+                input
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OffsetLayer<S> {
+    max_dist: f32,
+    inner: S,
+}
+
+impl<S> OffsetLayer<S> {
+    pub fn new(inner: S, max_dist: f32) -> Self {
+        Self { max_dist, inner }
+    }
+}
+
+impl<S: PreprocessingLayer> PreprocessingLayer for OffsetLayer<S> {
+    fn apply(&self, input: Activations) -> Activations {
+        let arr = self.inner.apply(input.clone()).0;
+        let size = (arr.len() as f32).sqrt() as usize;
+        let arr_2d = Array2::from_shape_vec((size, size), arr.to_vec());
+        let arr_2d = match arr_2d {
+            Ok(arr) => arr,
+            Err(err) => {
+                tracing::error!("{}", err);
+                return input;
+            }
+        };
+        let mut result = Array2::zeros((size, size));
+        let angle = std::f32::consts::PI * random::<f32>();
+
+        for i in 0..size {
+            for j in 0..size {
+                let offset = array![angle.cos(), angle.sin()] * self.max_dist;
+                let u = i + offset[0] as usize;
+                let v = j + offset[1] as usize;
+                if let (Some(a), Some(b)) = (result.get_mut((i, j)), arr_2d.get((u, v))) {
+                    *a = *b;
+                }
+            }
+        }
+        let result = result.into_raw_vec_and_offset().0;
+        let result = Array1::from_shape_vec(result.len(), result);
+        match result {
+            Ok(result) => Activations(result),
+            Err(err) => {
+                tracing::error!("{}", err);
+                input
+            }
+        }
+    }
 }
 
 #[bon]
-impl Network {
-    #[builder]
-    pub fn from_pretrained(path: impl Into<PathBuf>) -> anyhow::Result<Self> {
-        let weights = std::fs::read(path.into()).context("Failed to read weights file")?;
-        bincode::deserialize(&weights).context("Failed to deserialize weights")
-    }
-    pub fn save_data(&self, path: impl Into<PathBuf>) -> anyhow::Result<()> {
-        let data = bincode::serialize(self)?;
-        //std::fs::create_dir_all(path.into())?;
-        std::fs::File::create(path.into())?.write_all(&data)?;
-        Ok(())
-    }
+impl Network<()> {
     #[builder]
     pub fn untrained(input_size: usize, layer_spec: &[usize]) -> Self {
         let layers = layer_spec
@@ -181,7 +308,36 @@ impl Network {
                 Some(Layer { weights, bias })
             })
             .collect();
-        Network { layers }
+        Network {
+            layers,
+            preprocessing: None,
+        }
+    }
+}
+
+#[bon]
+impl Network<Trained> {
+    #[builder]
+    pub fn from_pretrained(path: impl Into<PathBuf>) -> anyhow::Result<Self> {
+        let weights = std::fs::read(path.into()).context("Failed to read weights file")?;
+        bincode::deserialize(&weights).context("Failed to deserialize weights")
+    }
+}
+
+#[bon]
+impl<S: PreprocessingLayer> Network<S> {
+    pub fn save_data(&self, path: impl Into<PathBuf>) -> anyhow::Result<()> {
+        let data = bincode::serialize(self)?;
+        //std::fs::create_dir_all(path.into())?;
+        std::fs::File::create(path.into())?.write_all(&data)?;
+        Ok(())
+    }
+
+    pub fn with_preprocessing<S2: PreprocessingLayer>(self, preprocessing: S2) -> Network<S2> {
+        Network {
+            layers: self.layers,
+            preprocessing: Some(preprocessing),
+        }
     }
 
     pub fn forward(&self, input: &Activations) -> (Vec<ZValues>, Vec<Activations>) {
@@ -309,7 +465,10 @@ impl Network {
                 }
             })
             .collect();
-        Network { layers: new_layers }
+        Network {
+            layers: new_layers,
+            preprocessing: self.preprocessing.clone(),
+        }
     }
 
     #[builder]
@@ -337,6 +496,7 @@ impl Network {
         epoch_span.pb_set_style(&default_progress_style_pink());
         let epoch_span = epoch_span.entered();
 
+        let preprocess = self.preprocessing.clone();
         (1..=epochs).fold(self, |state, _epoch| {
             let chunk_span = tracing::info_span!(parent: &epoch_span, "chunk");
             chunk_span.pb_set_length(chunk_count as u64);
@@ -361,10 +521,14 @@ impl Network {
                                 _ => 0.0,
                             }));
                             let image: Array1<f32> = image.into();
+                            let image = match &preprocess {
+                                Some(preprocessing) => preprocessing.apply(Activations(image)),
+                                _ => Activations(image),
+                            };
                             let res = chunk_state
                                 .backprop()
                                 .target(target)
-                                .input(Activations(image))
+                                .input(image)
                                 .learning_rate(learning_rate)
                                 .call();
                             res
@@ -383,16 +547,6 @@ impl Network {
         })
     }
 
-    pub fn predict(outputs: Activations) -> (usize, f32) {
-        outputs
-            .0
-            .iter()
-            .cloned()
-            .enumerate()
-            .max_by(|(_, x), (_, y)| x.partial_cmp(y).unwrap_or(Ordering::Equal))
-            .expect("No output layer!")
-    }
-
     pub fn accuracy(&self, dataset: Dataset) -> f32 {
         let span = tracing::info_span!("accuracy");
         span.pb_set_length(dataset.headers().image_count() as u64);
@@ -409,7 +563,7 @@ impl Network {
                     .last()
                     .unwrap()
                     .clone();
-                let (prediction, _) = Self::predict(output);
+                let (prediction, _) = output.predict();
                 span.pb_inc(1);
                 prediction == *label as usize
             })
@@ -419,7 +573,7 @@ impl Network {
     }
 }
 
-impl Debug for Network {
+impl<S> Debug for Network<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let weights: Vec<_> = self.layers.iter().map(|l| l.weights.dim()).collect();
         let bias: Vec<_> = self.layers.iter().map(|l| l.bias.dim()).collect();

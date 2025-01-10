@@ -11,6 +11,7 @@ use base64::{prelude::BASE64_STANDARD, Engine};
 use error::AppError;
 use image::ImageFormat;
 use leafeon_core::network::Network;
+use leafeon_core::network::Trained;
 use leafeon_types::Activations;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
@@ -41,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn root(State(network): State<Arc<Network>>) -> String {
+async fn root(State(network): State<Arc<Network<Trained>>>) -> String {
     format!("leafeon is running! {:?}", network)
 }
 
@@ -53,7 +54,7 @@ pub struct Prediction {
 
 #[axum::debug_handler]
 async fn predict_image(
-    State(network): State<Arc<Network>>,
+    State(network): State<Arc<Network<Trained>>>,
     body: String,
 ) -> Result<Json<Prediction>, AppError> {
     let body = body.split_once(",").context("Failed to split body")?.1;
@@ -75,7 +76,7 @@ async fn predict_image(
         .into_iter()
         .last()
         .context("No output layer")?;
-    let label = Network::predict(confidence.clone()).0;
+    let label = confidence.predict().0;
     let Activations(confidence) = confidence;
     let (confidence, _) = confidence.into_raw_vec_and_offset();
 

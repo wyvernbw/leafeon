@@ -1,4 +1,4 @@
-use std::{fmt::Display, iter::Sum};
+use std::{cmp::Ordering, fmt::Display, iter::Sum};
 
 use derive_more::derive::{Add, AsRef, Index, IndexMut, Mul as DeriveMoreMul, MulAssign, Sub};
 use ndarray::prelude::*;
@@ -32,6 +32,17 @@ pub struct ZValues(#[index] pub Array1<f32>);
 
 #[derive(Debug, Clone, Default, Index, IndexMut, Add, Sub, DeriveMoreMul, AsRef)]
 pub struct Activations(#[index] pub Array1<f32>);
+
+impl Activations {
+    pub fn predict(self: &Activations) -> (usize, f32) {
+        self.0
+            .iter()
+            .cloned()
+            .enumerate()
+            .max_by(|(_, x), (_, y)| x.partial_cmp(y).unwrap_or(Ordering::Equal))
+            .expect("No output layer!")
+    }
+}
 
 impl Display for Activations {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
