@@ -191,7 +191,7 @@ impl<S> NoiseLayer<S> {
 impl<S: PreprocessingLayer> PreprocessingLayer for NoiseLayer<S> {
     fn apply(&self, input: Activations) -> Activations {
         let arr = self.inner.apply(input).0;
-        let arr = arr.map(|x| x + self.amplitude * random::<f32>());
+        let arr = arr.map(|x| x + self.amplitude * (random::<f32>() - 0.5) * 2.0);
         Activations(arr)
     }
 }
@@ -224,9 +224,65 @@ impl<S: PreprocessingLayer> PreprocessingLayer for RotateLayer<S> {
         let mut rotated = Array2::default((size, size));
         for i in 0..size {
             for j in 0..size {
-                let rotated_idx = array![i as f32, j as f32].dot(&rotation);
-                let u = rotated_idx[0] as usize;
-                let v = rotated_idx[1] as usize;
+                let ci = i as isize - size as isize / 2;
+                let cj = j as isize - size as isize / 2;
+                let rotated_idx = array![ci as f32, cj as f32].dot(&rotation);
+                let u = rotated_idx[0] as isize + size as isize / 2;
+                let v = rotated_idx[1] as isize + size as isize / 2;
+                let u = u.max(0) as usize;
+                let v = v.max(0) as usize;
+                if let (Some(a), Some(b)) = (rotated.get_mut((i, j)), arr.get((u, v))) {
+                    *a = *b;
+                }
+            }
+        }
+        let rotated = rotated.into_raw_vec_and_offset().0;
+        let rotated = Array1::from_shape_vec(rotated.len(), rotated);
+        match rotated {
+            Ok(rotated) => Activations(rotated),
+            Err(err) => {
+                tracing::error!("{}", err);
+                input
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScaleLayer<S> {
+    inner: S,
+    scale: f32,
+}
+
+impl<S> ScaleLayer<S> {
+    pub fn new(inner: S, scale: f32) -> Self {
+        Self { inner, scale }
+    }
+}
+
+impl<S: PreprocessingLayer> PreprocessingLayer for ScaleLayer<S> {
+    fn apply(&self, input: Activations) -> Activations {
+        let arr = self.inner.apply(input.clone()).0;
+        let size = (arr.len() as f32).sqrt() as usize;
+        let arr = match Array2::from_shape_vec((size, size), arr.to_vec()) {
+            Ok(arr) => arr,
+            Err(err) => {
+                tracing::error!("{}", err);
+                return input;
+            }
+        };
+        let scale = 1.0 + (random::<f32>() - 0.5) * 2.0 * self.scale;
+        let scale = array![[scale, 0.0], [0.0, scale]];
+        let mut rotated = Array2::default((size, size));
+        for i in 0..size {
+            for j in 0..size {
+                let ci = i as isize - size as isize / 2;
+                let cj = j as isize - size as isize / 2;
+                let rotated_idx = array![ci as f32, cj as f32].dot(&scale);
+                let u = rotated_idx[0] as isize + size as isize / 2;
+                let v = rotated_idx[1] as isize + size as isize / 2;
+                let u = u.max(0) as usize;
+                let v = v.max(0) as usize;
                 if let (Some(a), Some(b)) = (rotated.get_mut((i, j)), arr.get((u, v))) {
                     *a = *b;
                 }
@@ -270,12 +326,14 @@ impl<S: PreprocessingLayer> PreprocessingLayer for OffsetLayer<S> {
         };
         let mut result = Array2::zeros((size, size));
         let angle = std::f32::consts::PI * random::<f32>();
+        let offset = array![angle.cos(), angle.sin()] * self.max_dist;
 
         for i in 0..size {
             for j in 0..size {
-                let offset = array![angle.cos(), angle.sin()] * self.max_dist;
-                let u = i + offset[0] as usize;
-                let v = j + offset[1] as usize;
+                let u = i as isize + offset[0] as isize;
+                let v = j as isize + offset[1] as isize;
+                let u = u.max(0) as usize;
+                let v = v.max(0) as usize;
                 if let (Some(a), Some(b)) = (result.get_mut((i, j)), arr_2d.get((u, v))) {
                     *a = *b;
                 }
@@ -447,6 +505,8 @@ impl<S: PreprocessingLayer> Network<S> {
     ) -> Self {
         assert_eq!(d_weights.len(), self.layers.len());
         assert_eq!(d_biases.len(), self.layers.len());
+        //let decay_rate = 0.00001;
+        let decay_rate = 0.0;
         let new_layers: Vec<_> = self
             .layers
             .par_iter()
@@ -460,7 +520,7 @@ impl<S: PreprocessingLayer> Network<S> {
                 assert_eq!(layer.weights.dim(), weights_gradient.0.dim());
                 assert_eq!(layer.bias.dim(), bias_gradient.0.dim());
                 Layer {
-                    weights: &layer.weights - weights_gradient.0,
+                    weights: (&layer.weights - &weights_gradient.0) * (1.0 - decay_rate),
                     bias: &layer.bias - bias_gradient.0,
                 }
             })

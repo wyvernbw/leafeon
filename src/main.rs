@@ -4,7 +4,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use leafeon_core::{
     default_progress_style,
-    network::{Network, NoiseLayer, OffsetLayer, PreprocessingLayer, RotateLayer},
+    network::{Network, NoiseLayer, OffsetLayer, PreprocessingLayer, RotateLayer, ScaleLayer},
     parser::load_data,
 };
 use leafeon_types::prelude::*;
@@ -33,7 +33,7 @@ pub enum Command {
 pub fn untrained() -> Network {
     Network::untrained()
         .input_size(28 * 28)
-        .layer_spec(&[64, 64, 10])
+        .layer_spec(&[64, 32, 10])
         .call()
 }
 
@@ -43,7 +43,7 @@ pub fn train<S: PreprocessingLayer>(network: Network<S>, dataset: Dataset) -> Ne
         .dataset(dataset)
         .accuracy(32.0 / 60_000.0)
         //.accuracy(1.0)
-        .epochs(15)
+        .epochs(10)
         .learning_rate(0.005)
         //.learning_rate(1.0)
         .call()
@@ -62,8 +62,9 @@ fn main() -> anyhow::Result<()> {
                 .call()?;
             let preprocess = ();
             let preprocess = RotateLayer::new(preprocess, std::f32::consts::PI * 0.1);
-            let preprocess = OffsetLayer::new(preprocess, 8.0);
-            let preprocess = NoiseLayer::new(preprocess, 0.3);
+            let preprocess = OffsetLayer::new(preprocess, 2.0);
+            let preprocess = ScaleLayer::new(preprocess, 0.1);
+            let preprocess = NoiseLayer::new(preprocess, 0.2);
             let network = untrained().with_preprocessing(preprocess);
             let network = train(network, dataset);
 
