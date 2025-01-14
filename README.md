@@ -20,9 +20,7 @@ let dataset = load_data()
 	.labels_path("./data/train-labels-idx1-ubyte")
 	.data_path("./data/train-images-idx3-ubyte")
 	.call()?;
-pub fn untrained() -> Network {
 
-}
 let preprocess = ();
 let preprocess = RotateLayer::new(preprocess, std::f32::consts::PI * 0.1);
 let preprocess = OffsetLayer::new(preprocess, 2.0);
