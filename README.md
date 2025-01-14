@@ -20,13 +20,19 @@ let dataset = load_data()
 	.labels_path("./data/train-labels-idx1-ubyte")
 	.data_path("./data/train-images-idx3-ubyte")
 	.call()?;
+pub fn untrained() -> Network {
 
+}
 let preprocess = ();
 let preprocess = RotateLayer::new(preprocess, std::f32::consts::PI * 0.1);
 let preprocess = OffsetLayer::new(preprocess, 2.0);
 let preprocess = ScaleLayer::new(preprocess, 0.1);
 let preprocess = NoiseLayer::new(preprocess, 0.2);
-let network = untrained().with_preprocessing(preprocess);
+let network = Network::untrained()
+	.input_size(28 * 28)
+	.layer_spec(&[64, 32, 10])
+	.call()
+	.with_preprocessing(preprocess);
 let network = network
 	.train()
 	.dataset(dataset)
