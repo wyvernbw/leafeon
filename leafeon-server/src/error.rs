@@ -7,8 +7,6 @@
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::get,
-    Router,
 };
 
 // Make our own error that wraps `anyhow::Error`.

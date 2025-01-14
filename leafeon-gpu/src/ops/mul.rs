@@ -272,7 +272,7 @@ impl State {
         let dispatch_x = n.div_ceil(WORKGROUP_SIZE);
         let dispatch_y = p.div_ceil(WORKGROUP_SIZE);
 
-        compute_pass.dispatch_workgroups(1, 1, 1);
+        compute_pass.dispatch_workgroups(dispatch_x, dispatch_y, 1);
         drop(compute_pass);
 
         encoder.copy_buffer_to_buffer(
@@ -310,20 +310,20 @@ impl State {
 
 #[cfg(test)]
 pub mod tests {
-    use std::{convert::identity, ops::Div};
+    use std::ops::Div;
 
-    use pretty_assertions::{assert_eq, assert_ne};
+    use pretty_assertions::assert_eq;
 
-    use ndarray::{array, Array2, ArrayD, ArrayView2};
+    use ndarray::{array, Array2, ArrayView2};
     use rand::Rng;
-    use rstest::{fixture, rstest};
+    use rstest::fixture;
 
     use crate::gpu::State;
 
     #[fixture]
     #[once]
     fn init() -> () {
-        tracing_subscriber::fmt::fmt();
+        let _ = tracing_subscriber::fmt::fmt();
         //.with_max_level(tracing::Level::DEBUG)
         //.init();
     }
@@ -331,7 +331,7 @@ pub mod tests {
     #[rstest::rstest]
     fn start_test(_init: &()) -> anyhow::Result<()> {
         smol::block_on(async {
-            let state = State::try_new().await?;
+            let _state = State::try_new().await?;
             anyhow::Ok(())
         })?;
         Ok(())
@@ -418,7 +418,7 @@ pub mod tests {
     #[case(random_arrays())]
     #[case(random_arrays())]
     #[case(random_arrays())]
-    fn fuzz_test(init: &(), #[case] random_arrays: (Array2<f32>, Array2<f32>, Array2<f32>)) {
+    fn fuzz_test(_init: &(), #[case] random_arrays: (Array2<f32>, Array2<f32>, Array2<f32>)) {
         smol::block_on(async {
             let (a, b, expected) = random_arrays;
             let state = State::try_new().await.unwrap();

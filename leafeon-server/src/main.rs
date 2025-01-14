@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use axum::{
-    body::Body,
     extract::State,
     routing::{get, post},
     Json, Router,

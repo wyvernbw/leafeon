@@ -1,7 +1,7 @@
 use leafeon_types::prelude::*;
 use pretty_assertions::{assert_eq, assert_ne};
 
-use std::{cmp::Ordering, fmt::Debug, io::Write, path::PathBuf};
+use std::{fmt::Debug, io::Write, path::PathBuf};
 
 use crate::default_progress_style_pink;
 use anyhow::Context;
@@ -471,7 +471,7 @@ impl<S: PreprocessingLayer> Network<S> {
         (d_weights, d_biases)
     }
 
-    fn compose_gradients(
+    fn _compose_gradients(
         d_weights: &[Vec<WeightGradient>],
         d_biases: &[Vec<BiasGradient>],
     ) -> (Vec<WeightGradient>, Vec<BiasGradient>) {

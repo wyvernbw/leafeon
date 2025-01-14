@@ -1,7 +1,7 @@
-use std::{cell::OnceCell, ops::Mul, sync::OnceLock};
+use std::{ops::Mul, sync::OnceLock};
 
 use bytemuck::Pod;
-use ndarray::{Array2, ArrayView1, ArrayView2};
+use ndarray::{Array2, ArrayView1};
 
 use crate::gpu::State;
 
@@ -26,6 +26,8 @@ pub fn dot(
     a: ndarray::ArrayView2<'_, f32>,
     b: ndarray::ArrayView2<'_, f32>,
 ) -> ndarray::Array2<f32> {
+    let _ = b;
+    let _ = a;
     todo!()
 }
 
